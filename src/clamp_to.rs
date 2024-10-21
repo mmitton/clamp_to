@@ -9,6 +9,15 @@ pub(crate) trait ClampTo<T> {
     fn clamp_to(self) -> T;
 }
 
+// This macro return const values for the min/max values possible when going from one type to
+// another.  Since this is const, all of the mess below is evaluated to a constant at compile time
+// and does not affect run time.
+//
+// Example, when clamping from i8 to u8, min_max will return (0, 127) to make sure the i8 will fit
+// in the u8 after a cast.
+//
+// These calculations could be done with bit shifts and bitwise nots, but are done this way to make
+// it more explicit what we are calculating.
 macro_rules! min_max {
     ($from:ty, $to:ty) => {{
         // Find the min and max value that fits in <$to> based on <$from>
@@ -112,6 +121,13 @@ mod test {
         macro_rules! test {
             ($from:ty, $from_name:expr, $to:ty, $to_name:expr, $min:expr, $max:expr) => {{
                 let (min, max) = min_max!($from, $to);
+
+                // Really make sure that the min/max values we expect are what can actually fit in
+                // both type by casting to i128 (which all types we have implemented will fit in)
+                // and check against the min/max returned from min_max!  This is just a double
+                // check that the tests below are checking the correct values.  In practice, this
+                // test only needs to check one or the other, but the extra test here is just a
+                // double check that everything is working as expected.
                 assert_eq!(min as i128, (<$to>::MIN as i128).max(<$from>::MIN as i128));
                 assert_eq!(max as i128, (<$to>::MAX as i128).min(<$from>::MAX as i128));
                 println!("{min:x}..={max:x} for {} => {}", $from_name, $to_name);
