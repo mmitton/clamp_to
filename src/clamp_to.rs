@@ -105,10 +105,12 @@ macro_rules! impl_clamp_to {
     };
 }
 
+impl_clamp_to!(u8);
 impl_clamp_to!(u16);
 impl_clamp_to!(u32);
 impl_clamp_to!(u64);
 impl_clamp_to!(usize);
+impl_clamp_to!(i8);
 impl_clamp_to!(i16);
 impl_clamp_to!(i32);
 impl_clamp_to!(i64);
