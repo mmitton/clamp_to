@@ -522,6 +522,10 @@ fn write_file(p: impl AsRef<Path>) -> Result<(), std::io::Error> {
 }
 
 fn main() {
+    // Do not regenerate when docs.rs is running
+    if std::env::var("DOCS_RS").is_ok() {
+        return;
+    }
     let dest_path = Path::new("src").join("clamp_to.rs");
     eprintln!("Saving to {dest_path:?}");
     write_file(&dest_path).expect("Could not write clamp_to.rs");
