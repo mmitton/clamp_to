@@ -2,228 +2,6374 @@
 #![allow(clippy::cast_lossless)]
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::cast_possible_wrap)]
+#![allow(clippy::cast_precision_loss)]
 #![allow(dead_code)]
 #![allow(unused_comparisons)]
 
-pub(crate) trait ClampTo<T> {
-    fn clamp_to(self) -> T;
+use super::{ClampError, ClampTo};
+
+///
+/// [u8] fits entirely within [u16].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u16> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        *self as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        Ok(*self as u16)
+    }
 }
 
-// This macro return const values for the min/max values possible when going from one type to
-// another.  Since this is const, all of the mess below is evaluated to a constant at compile time
-// and does not affect run time.
-//
-// Example, when clamping from i8 to u8, min_max will return (0, 127) to make sure the i8 will fit
-// in the u8 after a cast.
-//
-// These calculations could be done with bit shifts and bitwise nots, but are done this way to make
-// it more explicit what we are calculating.
-macro_rules! min_max {
-    ($from:ty, $to:ty) => {{
-        // Find the min and max value that fits in <$to> based on <$from>
-        const FROM_SIGNED: bool = <$from>::MIN < 0;
-        const TO_SIGNED: bool = <$to>::MIN < 0;
-        const FROM_BITS: u32 = <$from>::BITS;
-        const TO_BITS: u32 = <$to>::BITS;
+///
+/// [u8] fits entirely within [u32].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u32> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        *self as u32
+    }
 
-        const MIN: $from = if FROM_BITS == TO_BITS {
-            // from and to are the same width
-            match (FROM_SIGNED, TO_SIGNED) {
-                (true, true) => <$from>::MIN,
-                (true, false) => 0,
-                (false, true) => 0,
-                (false, false) => 0,
-            }
-        } else if FROM_BITS < TO_BITS {
-            // from is narrower than to
-            match (FROM_SIGNED, TO_SIGNED) {
-                (true, true) => <$from>::MIN,
-                (true, false) => 0,
-                (false, true) => 0,
-                (false, false) => 0,
-            }
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        Ok(*self as u32)
+    }
+}
+
+///
+/// [u8] fits entirely within [u64].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u64> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        *self as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        Ok(*self as u64)
+    }
+}
+
+///
+/// [u8] fits entirely within [u128].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u128> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        *self as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        Ok(*self as u128)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// [u8] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// [u8] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [u8] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+///
+/// Clamp values from `u8` to 0..=127 and cast to `i8`
+///
+impl ClampTo<i8> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(0, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u8,
+                127u8
+            )))
         } else {
-            // from is wider that to
-            match (FROM_SIGNED, TO_SIGNED) {
-                (true, true) => <$to>::MIN as $from,
-                (true, false) => 0,
-                (false, true) => 0,
-                (false, false) => 0,
-            }
-        };
+            Ok(*self as i8)
+        }
+    }
+}
 
-        const MAX: $from = if FROM_BITS == TO_BITS {
-            // from and to are the same width
-            match (FROM_SIGNED, TO_SIGNED) {
-                (true, true) => <$from>::MAX,
-                (true, false) => <$from>::MAX,
-                (false, true) => <$to>::MAX as $from,
-                (false, false) => <$from>::MAX,
-            }
-        } else if FROM_BITS < TO_BITS {
-            // from is narrower than to
-            match (FROM_SIGNED, TO_SIGNED) {
-                (true, true) => <$from>::MAX,
-                (true, false) => <$from>::MAX,
-                (false, true) => <$to>::MAX as $from,
-                (false, false) => <$from>::MAX,
-            }
+///
+/// Clamp values from `u8` to 0..=127 and cast to `i16`
+///
+impl ClampTo<i16> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(0, 127) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u8,
+                127u8
+            )))
         } else {
-            // from is wider that to
-            match (FROM_SIGNED, TO_SIGNED) {
-                (true, true) => <$to>::MAX as $from,
-                (true, false) => <$to>::MAX as $from,
-                (false, true) => <$to>::MAX as $from,
-                (false, false) => <$to>::MAX as $from,
-            }
-        };
-
-        (MIN, MAX)
-    }};
+            Ok(*self as i16)
+        }
+    }
 }
 
-macro_rules! impl_clamp_to {
-    ($from:ty, $to:ty) => {
-        impl ClampTo<$to> for $from {
-            fn clamp_to(self) -> $to {
-                let (min, max) = min_max!($from, $to);
-                self.clamp(min, max) as $to
-            }
+///
+/// Clamp values from `u8` to 0..=127 and cast to `i32`
+///
+impl ClampTo<i32> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        (*self).clamp(0, 127) as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u8,
+                127u8
+            )))
+        } else {
+            Ok(*self as i32)
         }
-    };
-    ($from:ty) => {
-        impl_clamp_to!($from, u8);
-        impl_clamp_to!($from, u16);
-        impl_clamp_to!($from, u32);
-        impl_clamp_to!($from, u64);
-        impl_clamp_to!($from, usize);
-        impl_clamp_to!($from, i8);
-        impl_clamp_to!($from, i16);
-        impl_clamp_to!($from, i32);
-        impl_clamp_to!($from, i64);
-        impl_clamp_to!($from, isize);
-    };
+    }
 }
 
-impl_clamp_to!(u8);
-impl_clamp_to!(u16);
-impl_clamp_to!(u32);
-impl_clamp_to!(u64);
-impl_clamp_to!(usize);
-impl_clamp_to!(i8);
-impl_clamp_to!(i16);
-impl_clamp_to!(i32);
-impl_clamp_to!(i64);
-impl_clamp_to!(isize);
+///
+/// Clamp values from `u8` to 0..=127 and cast to `i64`
+///
+impl ClampTo<i64> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        (*self).clamp(0, 127) as i64
+    }
 
-#[cfg(test)]
-mod test {
-    #[test]
-    fn min_max() {
-        macro_rules! test {
-            ($from:ty, $from_name:expr, $to:ty, $to_name:expr, $min:expr, $max:expr) => {{
-                let (min, max) = min_max!($from, $to);
-
-                // Really make sure that the min/max values we expect are what can actually fit in
-                // both type by casting to i128 (which all types we have implemented will fit in)
-                // and check against the min/max returned from min_max!  This is just a double
-                // check that the tests below are checking the correct values.  In practice, this
-                // test only needs to check one or the other, but the extra test here is just a
-                // double check that everything is working as expected.
-                assert_eq!(min as i128, (<$to>::MIN as i128).max(<$from>::MIN as i128));
-                assert_eq!(max as i128, (<$to>::MAX as i128).min(<$from>::MAX as i128));
-                println!("{min:x}..={max:x} for {} => {}", $from_name, $to_name);
-                assert_eq!(
-                    min, $min,
-                    "Expected min clamp for {} => {} to be {}, found {}",
-                    $from_name, $to_name, $min, min
-                );
-                assert_eq!(
-                    max, $max,
-                    "Expected max clamp for {} => {} to be {}, found {}",
-                    $from_name, $to_name, $max, max
-                );
-            }};
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u8,
+                127u8
+            )))
+        } else {
+            Ok(*self as i64)
         }
+    }
+}
 
-        // From u8
-        test!(u8, "u8", u8, "u8", 0u8, u8::MAX);
-        test!(u8, "u8", u16, "u16", 0u8, u8::MAX);
-        test!(u8, "u8", u32, "u32", 0u8, u8::MAX);
-        test!(u8, "u8", u64, "u64", 0u8, u8::MAX);
-        test!(u8, "u8", i8, "i8", 0u8, i8::MAX as u8);
-        test!(u8, "u8", i16, "i16", 0u8, u8::MAX);
-        test!(u8, "u8", i32, "i32", 0u8, u8::MAX);
-        test!(u8, "u8", i64, "i64", 0u8, u8::MAX);
+///
+/// Clamp values from `u8` to 0..=127 and cast to `i128`
+///
+impl ClampTo<i128> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        (*self).clamp(0, 127) as i128
+    }
 
-        // From u16
-        test!(u16, "u16", u8, "u8", 0u16, u8::MAX as u16);
-        test!(u16, "u16", u16, "u16", 0u16, u16::MAX);
-        test!(u16, "u16", u32, "u32", 0u16, u16::MAX);
-        test!(u16, "u16", u64, "u64", 0u16, u16::MAX);
-        test!(u16, "u16", i8, "i8", 0u16, i8::MAX as u16);
-        test!(u16, "u16", i16, "i16", 0u16, i16::MAX as u16);
-        test!(u16, "u16", i32, "i32", 0u16, u16::MAX);
-        test!(u16, "u16", i64, "i64", 0u16, u16::MAX);
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u8,
+                127u8
+            )))
+        } else {
+            Ok(*self as i128)
+        }
+    }
+}
 
-        // From u32
-        test!(u32, "u32", u8, "u8", 0u32, u8::MAX as u32);
-        test!(u32, "u32", u16, "u16", 0u32, u16::MAX as u32);
-        test!(u32, "u32", u32, "u32", 0u32, u32::MAX);
-        test!(u32, "u32", u64, "u64", 0u32, u32::MAX);
-        test!(u32, "u32", i8, "i8", 0u32, i8::MAX as u32);
-        test!(u32, "u32", i16, "i16", 0u32, i16::MAX as u32);
-        test!(u32, "u32", i32, "i32", 0u32, i32::MAX as u32);
-        test!(u32, "u32", i64, "i64", 0u32, u32::MAX);
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `u8` to 0..=127 and cast to `isize`
+///
+impl ClampTo<isize> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 127) as isize
+    }
 
-        // From u64
-        test!(u64, "u64", u8, "u8", 0u64, u8::MAX as u64);
-        test!(u64, "u64", u16, "u16", 0u64, u16::MAX as u64);
-        test!(u64, "u64", u32, "u64", 0u64, u32::MAX as u64);
-        test!(u64, "u64", u64, "u64", 0u64, u64::MAX);
-        test!(u64, "u64", i8, "i8", 0u64, i8::MAX as u64);
-        test!(u64, "u64", i16, "i16", 0u64, i16::MAX as u64);
-        test!(u64, "u64", i32, "i32", 0u64, i32::MAX as u64);
-        test!(u64, "u64", i64, "i64", 0u64, i64::MAX as u64);
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u8,
+                127u8
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
 
-        // From i8
-        test!(i8, "i8", u8, "u8", 0i8, i8::MAX);
-        test!(i8, "i8", u16, "u16", 0i8, i8::MAX);
-        test!(i8, "i8", u32, "u32", 0i8, i8::MAX);
-        test!(i8, "i8", u64, "u64", 0i8, i8::MAX);
-        test!(i8, "i8", i8, "i8", i8::MIN, i8::MAX);
-        test!(i8, "i8", i16, "i16", i8::MIN, i8::MAX);
-        test!(i8, "i8", i32, "i32", i8::MIN, i8::MAX);
-        test!(i8, "i8", i64, "i64", i8::MIN, i8::MAX);
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `u8` to 0..=127 and cast to `isize`
+///
+impl ClampTo<isize> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 127) as isize
+    }
 
-        // From i16
-        test!(i16, "i16", u8, "u8", 0i16, u8::MAX as i16);
-        test!(i16, "i16", u16, "u16", 0i16, i16::MAX);
-        test!(i16, "i16", u32, "u32", 0i16, i16::MAX);
-        test!(i16, "i16", u64, "u64", 0i16, i16::MAX);
-        test!(i16, "i16", i8, "i8", i8::MIN as i16, i8::MAX as i16);
-        test!(i16, "i16", i16, "i16", i16::MIN, i16::MAX);
-        test!(i16, "i16", i32, "i32", i16::MIN, i16::MAX);
-        test!(i16, "i16", i64, "i64", i16::MIN, i16::MAX);
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u8,
+                127u8
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
 
-        // From i32
-        test!(i32, "i32", u8, "u8", 0i32, u8::MAX as i32);
-        test!(i32, "i32", u16, "u16", 0i32, u16::MAX as i32);
-        test!(i32, "i32", u32, "u32", 0i32, i32::MAX);
-        test!(i32, "i32", u64, "u64", 0i32, i32::MAX);
-        test!(i32, "i32", i8, "i8", i8::MIN as i32, i8::MAX as i32);
-        test!(i32, "i32", i16, "i16", i16::MIN as i32, i16::MAX as i32);
-        test!(i32, "i32", i32, "i32", i32::MIN, i32::MAX);
-        test!(i32, "i32", i64, "i64", i32::MIN, i32::MAX);
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `u8` to 0..=127 and cast to `isize`
+///
+impl ClampTo<isize> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 127) as isize
+    }
 
-        // From i64
-        test!(i64, "i64", u8, "u8", 0i64, u8::MAX as i64);
-        test!(i64, "i64", u16, "u16", 0i64, u16::MAX as i64);
-        test!(i64, "i64", u32, "u32", 0i64, u32::MAX as i64);
-        test!(i64, "i64", u64, "u64", 0i64, i64::MAX);
-        test!(i64, "i64", i8, "i8", i8::MIN as i64, i8::MAX as i64);
-        test!(i64, "i64", i16, "i16", i16::MIN as i64, i16::MAX as i64);
-        test!(i64, "i64", i32, "i32", i32::MIN as i64, i32::MAX as i64);
-        test!(i64, "i64", i64, "i64", i64::MIN, i64::MAX);
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u8,
+                127u8
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+///
+/// Clamp values from `u8` to 0..=255 and cast to `f32`
+///
+impl ClampTo<f32> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(0, 255) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (0..=255).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u8,
+                255u8
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+///
+/// Clamp values from `f32` to 0.0..=255.0 and cast to `u8`
+///
+impl ClampTo<u8> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        (*self).clamp(0.0, 255.0) as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        if (0.0..=255.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f32,
+                255f32
+            )))
+        } else {
+            Ok(*self as u8)
+        }
+    }
+}
+
+///
+/// Clamp values from `u8` to 0..=255 and cast to `f64`
+///
+impl ClampTo<f64> for u8 {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(0, 255) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (0..=255).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u8,
+                255u8
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+///
+/// Clamp values from `f64` to 0.0..=255.0 and cast to `u8`
+///
+impl ClampTo<u8> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        (*self).clamp(0.0, 255.0) as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        if (0.0..=255.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f64,
+                255f64
+            )))
+        } else {
+            Ok(*self as u8)
+        }
+    }
+}
+
+///
+/// [u16] fits entirely within [u8].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u8> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        *self as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        Ok(*self as u8)
+    }
+}
+
+///
+/// [u16] fits entirely within [u32].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u32> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        *self as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        Ok(*self as u32)
+    }
+}
+
+///
+/// [u16] fits entirely within [u64].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u64> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        *self as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        Ok(*self as u64)
+    }
+}
+
+///
+/// [u16] fits entirely within [u128].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u128> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        *self as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        Ok(*self as u128)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// [u16] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// [u16] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [u16] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+///
+/// Clamp values from `u16` to 0..=127 and cast to `i8`
+///
+impl ClampTo<i8> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(0, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u16,
+                127u16
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+///
+/// Clamp values from `u16` to 0..=32767 and cast to `i16`
+///
+impl ClampTo<i16> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(0, 32767) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u16,
+                32767u16
+            )))
+        } else {
+            Ok(*self as i16)
+        }
+    }
+}
+
+///
+/// Clamp values from `u16` to 0..=32767 and cast to `i32`
+///
+impl ClampTo<i32> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        (*self).clamp(0, 32767) as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u16,
+                32767u16
+            )))
+        } else {
+            Ok(*self as i32)
+        }
+    }
+}
+
+///
+/// Clamp values from `u16` to 0..=32767 and cast to `i64`
+///
+impl ClampTo<i64> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        (*self).clamp(0, 32767) as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u16,
+                32767u16
+            )))
+        } else {
+            Ok(*self as i64)
+        }
+    }
+}
+
+///
+/// Clamp values from `u16` to 0..=32767 and cast to `i128`
+///
+impl ClampTo<i128> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        (*self).clamp(0, 32767) as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u16,
+                32767u16
+            )))
+        } else {
+            Ok(*self as i128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `u16` to 0..=32767 and cast to `isize`
+///
+impl ClampTo<isize> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 32767) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u16,
+                32767u16
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `u16` to 0..=32767 and cast to `isize`
+///
+impl ClampTo<isize> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 32767) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u16,
+                32767u16
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `u16` to 0..=32767 and cast to `isize`
+///
+impl ClampTo<isize> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 32767) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u16,
+                32767u16
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+///
+/// Clamp values from `u16` to 0..=65535 and cast to `f32`
+///
+impl ClampTo<f32> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(0, 65535) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (0..=65535).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u16,
+                65535u16
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+///
+/// Clamp values from `f32` to 0.0..=65535.0 and cast to `u16`
+///
+impl ClampTo<u16> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        (*self).clamp(0.0, 65535.0) as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        if (0.0..=65535.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f32,
+                65535f32
+            )))
+        } else {
+            Ok(*self as u16)
+        }
+    }
+}
+
+///
+/// Clamp values from `u16` to 0..=65535 and cast to `f64`
+///
+impl ClampTo<f64> for u16 {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(0, 65535) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (0..=65535).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u16,
+                65535u16
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+///
+/// Clamp values from `f64` to 0.0..=65535.0 and cast to `u16`
+///
+impl ClampTo<u16> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        (*self).clamp(0.0, 65535.0) as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        if (0.0..=65535.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f64,
+                65535f64
+            )))
+        } else {
+            Ok(*self as u16)
+        }
+    }
+}
+
+///
+/// [u32] fits entirely within [u8].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u8> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        *self as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        Ok(*self as u8)
+    }
+}
+
+///
+/// [u32] fits entirely within [u16].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u16> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        *self as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        Ok(*self as u16)
+    }
+}
+
+///
+/// [u32] fits entirely within [u64].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u64> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        *self as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        Ok(*self as u64)
+    }
+}
+
+///
+/// [u32] fits entirely within [u128].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u128> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        *self as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        Ok(*self as u128)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// [u32] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// [u32] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [u32] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+///
+/// Clamp values from `u32` to 0..=127 and cast to `i8`
+///
+impl ClampTo<i8> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(0, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u32,
+                127u32
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+///
+/// Clamp values from `u32` to 0..=32767 and cast to `i16`
+///
+impl ClampTo<i16> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(0, 32767) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u32,
+                32767u32
+            )))
+        } else {
+            Ok(*self as i16)
+        }
+    }
+}
+
+///
+/// Clamp values from `u32` to 0..=2147483647 and cast to `i32`
+///
+impl ClampTo<i32> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        (*self).clamp(0, 2147483647) as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u32,
+                2147483647u32
+            )))
+        } else {
+            Ok(*self as i32)
+        }
+    }
+}
+
+///
+/// Clamp values from `u32` to 0..=2147483647 and cast to `i64`
+///
+impl ClampTo<i64> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        (*self).clamp(0, 2147483647) as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u32,
+                2147483647u32
+            )))
+        } else {
+            Ok(*self as i64)
+        }
+    }
+}
+
+///
+/// Clamp values from `u32` to 0..=2147483647 and cast to `i128`
+///
+impl ClampTo<i128> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        (*self).clamp(0, 2147483647) as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u32,
+                2147483647u32
+            )))
+        } else {
+            Ok(*self as i128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `u32` to 0..=32767 and cast to `isize`
+///
+impl ClampTo<isize> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 32767) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u32,
+                32767u32
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `u32` to 0..=2147483647 and cast to `isize`
+///
+impl ClampTo<isize> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 2147483647) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u32,
+                2147483647u32
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `u32` to 0..=2147483647 and cast to `isize`
+///
+impl ClampTo<isize> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 2147483647) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u32,
+                2147483647u32
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+///
+/// Clamp values from `u32` to 0..=16777215 and cast to `f32`
+///
+impl ClampTo<f32> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(0, 16777215) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (0..=16777215).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u32,
+                16777215u32
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+///
+/// Clamp values from `f32` to 0.0..=16777215.0 and cast to `u32`
+///
+impl ClampTo<u32> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        (*self).clamp(0.0, 16777215.0) as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        if (0.0..=16777215.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f32,
+                16777215f32
+            )))
+        } else {
+            Ok(*self as u32)
+        }
+    }
+}
+
+///
+/// Clamp values from `u32` to 0..=4294967295 and cast to `f64`
+///
+impl ClampTo<f64> for u32 {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(0, 4294967295) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (0..=4294967295).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u32,
+                4294967295u32
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+///
+/// Clamp values from `f64` to 0.0..=4294967295.0 and cast to `u32`
+///
+impl ClampTo<u32> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        (*self).clamp(0.0, 4294967295.0) as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        if (0.0..=4294967295.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f64,
+                4294967295f64
+            )))
+        } else {
+            Ok(*self as u32)
+        }
+    }
+}
+
+///
+/// [u64] fits entirely within [u8].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u8> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        *self as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        Ok(*self as u8)
+    }
+}
+
+///
+/// [u64] fits entirely within [u16].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u16> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        *self as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        Ok(*self as u16)
+    }
+}
+
+///
+/// [u64] fits entirely within [u32].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u32> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        *self as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        Ok(*self as u32)
+    }
+}
+
+///
+/// [u64] fits entirely within [u128].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u128> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        *self as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        Ok(*self as u128)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// [u64] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// [u64] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [u64] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+///
+/// Clamp values from `u64` to 0..=127 and cast to `i8`
+///
+impl ClampTo<i8> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(0, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u64,
+                127u64
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+///
+/// Clamp values from `u64` to 0..=32767 and cast to `i16`
+///
+impl ClampTo<i16> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(0, 32767) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u64,
+                32767u64
+            )))
+        } else {
+            Ok(*self as i16)
+        }
+    }
+}
+
+///
+/// Clamp values from `u64` to 0..=2147483647 and cast to `i32`
+///
+impl ClampTo<i32> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        (*self).clamp(0, 2147483647) as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u64,
+                2147483647u64
+            )))
+        } else {
+            Ok(*self as i32)
+        }
+    }
+}
+
+///
+/// Clamp values from `u64` to 0..=9223372036854775807 and cast to `i64`
+///
+impl ClampTo<i64> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        (*self).clamp(0, 9223372036854775807) as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u64,
+                9223372036854775807u64
+            )))
+        } else {
+            Ok(*self as i64)
+        }
+    }
+}
+
+///
+/// Clamp values from `u64` to 0..=9223372036854775807 and cast to `i128`
+///
+impl ClampTo<i128> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        (*self).clamp(0, 9223372036854775807) as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u64,
+                9223372036854775807u64
+            )))
+        } else {
+            Ok(*self as i128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `u64` to 0..=32767 and cast to `isize`
+///
+impl ClampTo<isize> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 32767) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u64,
+                32767u64
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `u64` to 0..=2147483647 and cast to `isize`
+///
+impl ClampTo<isize> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 2147483647) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u64,
+                2147483647u64
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `u64` to 0..=9223372036854775807 and cast to `isize`
+///
+impl ClampTo<isize> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 9223372036854775807) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u64,
+                9223372036854775807u64
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+///
+/// Clamp values from `u64` to 0..=16777215 and cast to `f32`
+///
+impl ClampTo<f32> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(0, 16777215) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (0..=16777215).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u64,
+                16777215u64
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+///
+/// Clamp values from `f32` to 0.0..=16777215.0 and cast to `u64`
+///
+impl ClampTo<u64> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        (*self).clamp(0.0, 16777215.0) as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        if (0.0..=16777215.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f32,
+                16777215f32
+            )))
+        } else {
+            Ok(*self as u64)
+        }
+    }
+}
+
+///
+/// Clamp values from `u64` to 0..=9007199254740991 and cast to `f64`
+///
+impl ClampTo<f64> for u64 {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(0, 9007199254740991) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (0..=9007199254740991).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u64,
+                9007199254740991u64
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+///
+/// Clamp values from `f64` to 0.0..=9007199254740991.0 and cast to `u64`
+///
+impl ClampTo<u64> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        (*self).clamp(0.0, 9007199254740991.0) as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        if (0.0..=9007199254740991.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f64,
+                9007199254740991f64
+            )))
+        } else {
+            Ok(*self as u64)
+        }
+    }
+}
+
+///
+/// [u128] fits entirely within [u8].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u8> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        *self as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        Ok(*self as u8)
+    }
+}
+
+///
+/// [u128] fits entirely within [u16].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u16> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        *self as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        Ok(*self as u16)
+    }
+}
+
+///
+/// [u128] fits entirely within [u32].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u32> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        *self as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        Ok(*self as u32)
+    }
+}
+
+///
+/// [u128] fits entirely within [u64].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u64> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        *self as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        Ok(*self as u64)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// [u128] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// [u128] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [u128] fits entirely within [usize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<usize> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        *self as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        Ok(*self as usize)
+    }
+}
+
+///
+/// Clamp values from `u128` to 0..=127 and cast to `i8`
+///
+impl ClampTo<i8> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(0, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u128,
+                127u128
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+///
+/// Clamp values from `u128` to 0..=32767 and cast to `i16`
+///
+impl ClampTo<i16> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(0, 32767) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u128,
+                32767u128
+            )))
+        } else {
+            Ok(*self as i16)
+        }
+    }
+}
+
+///
+/// Clamp values from `u128` to 0..=2147483647 and cast to `i32`
+///
+impl ClampTo<i32> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        (*self).clamp(0, 2147483647) as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u128,
+                2147483647u128
+            )))
+        } else {
+            Ok(*self as i32)
+        }
+    }
+}
+
+///
+/// Clamp values from `u128` to 0..=9223372036854775807 and cast to `i64`
+///
+impl ClampTo<i64> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        (*self).clamp(0, 9223372036854775807) as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u128,
+                9223372036854775807u128
+            )))
+        } else {
+            Ok(*self as i64)
+        }
+    }
+}
+
+///
+/// Clamp values from `u128` to 0..=170141183460469231731687303715884105727 and cast to `i128`
+///
+impl ClampTo<i128> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        (*self).clamp(0, 170141183460469231731687303715884105727) as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        if (0..=170141183460469231731687303715884105727).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u128,
+                170141183460469231731687303715884105727u128
+            )))
+        } else {
+            Ok(*self as i128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `u128` to 0..=32767 and cast to `isize`
+///
+impl ClampTo<isize> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 32767) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u128,
+                32767u128
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `u128` to 0..=2147483647 and cast to `isize`
+///
+impl ClampTo<isize> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 2147483647) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u128,
+                2147483647u128
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `u128` to 0..=9223372036854775807 and cast to `isize`
+///
+impl ClampTo<isize> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 9223372036854775807) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u128,
+                9223372036854775807u128
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+///
+/// Clamp values from `u128` to 0..=16777215 and cast to `f32`
+///
+impl ClampTo<f32> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(0, 16777215) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (0..=16777215).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u128,
+                16777215u128
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+///
+/// Clamp values from `f32` to 0.0..=16777215.0 and cast to `u128`
+///
+impl ClampTo<u128> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        (*self).clamp(0.0, 16777215.0) as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        if (0.0..=16777215.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f32,
+                16777215f32
+            )))
+        } else {
+            Ok(*self as u128)
+        }
+    }
+}
+
+///
+/// Clamp values from `u128` to 0..=9007199254740991 and cast to `f64`
+///
+impl ClampTo<f64> for u128 {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(0, 9007199254740991) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (0..=9007199254740991).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0u128,
+                9007199254740991u128
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+///
+/// Clamp values from `f64` to 0.0..=9007199254740991.0 and cast to `u128`
+///
+impl ClampTo<u128> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        (*self).clamp(0.0, 9007199254740991.0) as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        if (0.0..=9007199254740991.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f64,
+                9007199254740991f64
+            )))
+        } else {
+            Ok(*self as u128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `usize` to 0..=18446744073709551615 and cast to `u8`
+///
+impl ClampTo<u8> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        (*self).clamp(0, 18446744073709551615) as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        if (0..=18446744073709551615).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                18446744073709551615usize
+            )))
+        } else {
+            Ok(*self as u8)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `usize` to 0..=18446744073709551615 and cast to `u8`
+///
+impl ClampTo<u8> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        (*self).clamp(0, 18446744073709551615) as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        if (0..=18446744073709551615).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                18446744073709551615usize
+            )))
+        } else {
+            Ok(*self as u8)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [usize] fits entirely within [u8].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u8> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        *self as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        Ok(*self as u8)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `usize` to 0..=18446744073709551615 and cast to `u16`
+///
+impl ClampTo<u16> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        (*self).clamp(0, 18446744073709551615) as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        if (0..=18446744073709551615).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                18446744073709551615usize
+            )))
+        } else {
+            Ok(*self as u16)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `usize` to 0..=18446744073709551615 and cast to `u16`
+///
+impl ClampTo<u16> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        (*self).clamp(0, 18446744073709551615) as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        if (0..=18446744073709551615).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                18446744073709551615usize
+            )))
+        } else {
+            Ok(*self as u16)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [usize] fits entirely within [u16].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u16> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        *self as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        Ok(*self as u16)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `usize` to 0..=18446744073709551615 and cast to `u32`
+///
+impl ClampTo<u32> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        (*self).clamp(0, 18446744073709551615) as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        if (0..=18446744073709551615).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                18446744073709551615usize
+            )))
+        } else {
+            Ok(*self as u32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `usize` to 0..=18446744073709551615 and cast to `u32`
+///
+impl ClampTo<u32> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        (*self).clamp(0, 18446744073709551615) as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        if (0..=18446744073709551615).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                18446744073709551615usize
+            )))
+        } else {
+            Ok(*self as u32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [usize] fits entirely within [u32].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u32> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        *self as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        Ok(*self as u32)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `usize` to 0..=18446744073709551615 and cast to `u64`
+///
+impl ClampTo<u64> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        (*self).clamp(0, 18446744073709551615) as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        if (0..=18446744073709551615).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                18446744073709551615usize
+            )))
+        } else {
+            Ok(*self as u64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `usize` to 0..=18446744073709551615 and cast to `u64`
+///
+impl ClampTo<u64> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        (*self).clamp(0, 18446744073709551615) as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        if (0..=18446744073709551615).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                18446744073709551615usize
+            )))
+        } else {
+            Ok(*self as u64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [usize] fits entirely within [u64].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u64> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        *self as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        Ok(*self as u64)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `usize` to 0..=18446744073709551615 and cast to `u128`
+///
+impl ClampTo<u128> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        (*self).clamp(0, 18446744073709551615) as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        if (0..=18446744073709551615).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                18446744073709551615usize
+            )))
+        } else {
+            Ok(*self as u128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `usize` to 0..=18446744073709551615 and cast to `u128`
+///
+impl ClampTo<u128> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        (*self).clamp(0, 18446744073709551615) as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        if (0..=18446744073709551615).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                18446744073709551615usize
+            )))
+        } else {
+            Ok(*self as u128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [usize] fits entirely within [u128].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<u128> for usize {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        *self as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        Ok(*self as u128)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `usize` to 0..=127 and cast to `i8`
+///
+impl ClampTo<i8> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(0, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                127usize
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `usize` to 0..=127 and cast to `i8`
+///
+impl ClampTo<i8> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(0, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                127usize
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `usize` to 0..=127 and cast to `i8`
+///
+impl ClampTo<i8> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(0, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                127usize
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `usize` to 0..=32767 and cast to `i16`
+///
+impl ClampTo<i16> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(0, 32767) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                32767usize
+            )))
+        } else {
+            Ok(*self as i16)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `usize` to 0..=32767 and cast to `i16`
+///
+impl ClampTo<i16> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(0, 32767) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                32767usize
+            )))
+        } else {
+            Ok(*self as i16)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `usize` to 0..=32767 and cast to `i16`
+///
+impl ClampTo<i16> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(0, 32767) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                32767usize
+            )))
+        } else {
+            Ok(*self as i16)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `usize` to 0..=32767 and cast to `i32`
+///
+impl ClampTo<i32> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        (*self).clamp(0, 32767) as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                32767usize
+            )))
+        } else {
+            Ok(*self as i32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `usize` to 0..=2147483647 and cast to `i32`
+///
+impl ClampTo<i32> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        (*self).clamp(0, 2147483647) as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                2147483647usize
+            )))
+        } else {
+            Ok(*self as i32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `usize` to 0..=2147483647 and cast to `i32`
+///
+impl ClampTo<i32> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        (*self).clamp(0, 2147483647) as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                2147483647usize
+            )))
+        } else {
+            Ok(*self as i32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `usize` to 0..=32767 and cast to `i64`
+///
+impl ClampTo<i64> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        (*self).clamp(0, 32767) as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                32767usize
+            )))
+        } else {
+            Ok(*self as i64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `usize` to 0..=2147483647 and cast to `i64`
+///
+impl ClampTo<i64> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        (*self).clamp(0, 2147483647) as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                2147483647usize
+            )))
+        } else {
+            Ok(*self as i64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `usize` to 0..=9223372036854775807 and cast to `i64`
+///
+impl ClampTo<i64> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        (*self).clamp(0, 9223372036854775807) as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                9223372036854775807usize
+            )))
+        } else {
+            Ok(*self as i64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `usize` to 0..=32767 and cast to `i128`
+///
+impl ClampTo<i128> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        (*self).clamp(0, 32767) as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                32767usize
+            )))
+        } else {
+            Ok(*self as i128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `usize` to 0..=2147483647 and cast to `i128`
+///
+impl ClampTo<i128> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        (*self).clamp(0, 2147483647) as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                2147483647usize
+            )))
+        } else {
+            Ok(*self as i128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `usize` to 0..=9223372036854775807 and cast to `i128`
+///
+impl ClampTo<i128> for usize {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        (*self).clamp(0, 9223372036854775807) as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                9223372036854775807usize
+            )))
+        } else {
+            Ok(*self as i128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `usize` to 0..=32767 and cast to `isize`
+///
+impl ClampTo<isize> for usize {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 32767) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                32767usize
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `usize` to 0..=2147483647 and cast to `isize`
+///
+impl ClampTo<isize> for usize {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 2147483647) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                2147483647usize
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `usize` to 0..=9223372036854775807 and cast to `isize`
+///
+impl ClampTo<isize> for usize {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(0, 9223372036854775807) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                9223372036854775807usize
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `usize` to 0..=65535 and cast to `f32`
+///
+impl ClampTo<f32> for usize {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(0, 65535) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (0..=65535).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                65535usize
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `f32` to 0.0..=65535.0 and cast to `usize`
+///
+impl ClampTo<usize> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0.0, 65535.0) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0.0..=65535.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f32,
+                65535f32
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `usize` to 0..=16777215 and cast to `f32`
+///
+impl ClampTo<f32> for usize {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(0, 16777215) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (0..=16777215).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                16777215usize
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `f32` to 0.0..=16777215.0 and cast to `usize`
+///
+impl ClampTo<usize> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0.0, 16777215.0) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0.0..=16777215.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f32,
+                16777215f32
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `usize` to 0..=16777215 and cast to `f32`
+///
+impl ClampTo<f32> for usize {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(0, 16777215) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (0..=16777215).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                16777215usize
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `f32` to 0.0..=16777215.0 and cast to `usize`
+///
+impl ClampTo<usize> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0.0, 16777215.0) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0.0..=16777215.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f32,
+                16777215f32
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `usize` to 0..=65535 and cast to `f64`
+///
+impl ClampTo<f64> for usize {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(0, 65535) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (0..=65535).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                65535usize
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `f64` to 0.0..=65535.0 and cast to `usize`
+///
+impl ClampTo<usize> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0.0, 65535.0) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0.0..=65535.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f64,
+                65535f64
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `usize` to 0..=4294967295 and cast to `f64`
+///
+impl ClampTo<f64> for usize {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(0, 4294967295) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (0..=4294967295).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                4294967295usize
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `f64` to 0.0..=4294967295.0 and cast to `usize`
+///
+impl ClampTo<usize> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0.0, 4294967295.0) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0.0..=4294967295.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f64,
+                4294967295f64
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `usize` to 0..=9007199254740991 and cast to `f64`
+///
+impl ClampTo<f64> for usize {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(0, 9007199254740991) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (0..=9007199254740991).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0usize,
+                9007199254740991usize
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `f64` to 0.0..=9007199254740991.0 and cast to `usize`
+///
+impl ClampTo<usize> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0.0, 9007199254740991.0) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0.0..=9007199254740991.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0f64,
+                9007199254740991f64
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+///
+/// Clamp values from `i8` to 0..=127 and cast to `u8`
+///
+impl ClampTo<u8> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        (*self).clamp(0, 127) as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i8,
+                127i8
+            )))
+        } else {
+            Ok(*self as u8)
+        }
+    }
+}
+
+///
+/// Clamp values from `i8` to 0..=127 and cast to `u16`
+///
+impl ClampTo<u16> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        (*self).clamp(0, 127) as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i8,
+                127i8
+            )))
+        } else {
+            Ok(*self as u16)
+        }
+    }
+}
+
+///
+/// Clamp values from `i8` to 0..=127 and cast to `u32`
+///
+impl ClampTo<u32> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        (*self).clamp(0, 127) as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i8,
+                127i8
+            )))
+        } else {
+            Ok(*self as u32)
+        }
+    }
+}
+
+///
+/// Clamp values from `i8` to 0..=127 and cast to `u64`
+///
+impl ClampTo<u64> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        (*self).clamp(0, 127) as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i8,
+                127i8
+            )))
+        } else {
+            Ok(*self as u64)
+        }
+    }
+}
+
+///
+/// Clamp values from `i8` to 0..=127 and cast to `u128`
+///
+impl ClampTo<u128> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        (*self).clamp(0, 127) as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i8,
+                127i8
+            )))
+        } else {
+            Ok(*self as u128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `i8` to 0..=127 and cast to `usize`
+///
+impl ClampTo<usize> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 127) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i8,
+                127i8
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `i8` to 0..=127 and cast to `usize`
+///
+impl ClampTo<usize> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 127) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i8,
+                127i8
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `i8` to 0..=127 and cast to `usize`
+///
+impl ClampTo<usize> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 127) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i8,
+                127i8
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+///
+/// [i8] fits entirely within [i16].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i16> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        *self as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        Ok(*self as i16)
+    }
+}
+
+///
+/// [i8] fits entirely within [i32].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i32> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        *self as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        Ok(*self as i32)
+    }
+}
+
+///
+/// [i8] fits entirely within [i64].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i64> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        *self as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        Ok(*self as i64)
+    }
+}
+
+///
+/// [i8] fits entirely within [i128].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i128> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        *self as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        Ok(*self as i128)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// [i8] fits entirely within [isize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<isize> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        *self as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        Ok(*self as isize)
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// [i8] fits entirely within [isize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<isize> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        *self as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        Ok(*self as isize)
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [i8] fits entirely within [isize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<isize> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        *self as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        Ok(*self as isize)
+    }
+}
+
+///
+/// Clamp values from `i8` to -128..=127 and cast to `f32`
+///
+impl ClampTo<f32> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(-128, 127) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (-128..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -128i8,
+                127i8
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+///
+/// Clamp values from `f32` to -128.0..=127.0 and cast to `i8`
+///
+impl ClampTo<i8> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(-128.0, 127.0) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (-128.0..=127.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -128f32,
+                127f32
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+///
+/// Clamp values from `i8` to -128..=127 and cast to `f64`
+///
+impl ClampTo<f64> for i8 {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(-128, 127) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (-128..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -128i8,
+                127i8
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+///
+/// Clamp values from `f64` to -128.0..=127.0 and cast to `i8`
+///
+impl ClampTo<i8> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(-128.0, 127.0) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (-128.0..=127.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -128f64,
+                127f64
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+///
+/// Clamp values from `i16` to 0..=127 and cast to `u8`
+///
+impl ClampTo<u8> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        (*self).clamp(0, 127) as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i16,
+                127i16
+            )))
+        } else {
+            Ok(*self as u8)
+        }
+    }
+}
+
+///
+/// Clamp values from `i16` to 0..=32767 and cast to `u16`
+///
+impl ClampTo<u16> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        (*self).clamp(0, 32767) as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i16,
+                32767i16
+            )))
+        } else {
+            Ok(*self as u16)
+        }
+    }
+}
+
+///
+/// Clamp values from `i16` to 0..=32767 and cast to `u32`
+///
+impl ClampTo<u32> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        (*self).clamp(0, 32767) as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i16,
+                32767i16
+            )))
+        } else {
+            Ok(*self as u32)
+        }
+    }
+}
+
+///
+/// Clamp values from `i16` to 0..=32767 and cast to `u64`
+///
+impl ClampTo<u64> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        (*self).clamp(0, 32767) as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i16,
+                32767i16
+            )))
+        } else {
+            Ok(*self as u64)
+        }
+    }
+}
+
+///
+/// Clamp values from `i16` to 0..=32767 and cast to `u128`
+///
+impl ClampTo<u128> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        (*self).clamp(0, 32767) as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i16,
+                32767i16
+            )))
+        } else {
+            Ok(*self as u128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `i16` to 0..=32767 and cast to `usize`
+///
+impl ClampTo<usize> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 32767) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i16,
+                32767i16
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `i16` to 0..=32767 and cast to `usize`
+///
+impl ClampTo<usize> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 32767) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i16,
+                32767i16
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `i16` to 0..=32767 and cast to `usize`
+///
+impl ClampTo<usize> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 32767) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i16,
+                32767i16
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+///
+/// Clamp values from `i16` to -128..=127 and cast to `i8`
+///
+impl ClampTo<i8> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(-128, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (-128..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -128i16,
+                127i16
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+///
+/// [i16] fits entirely within [i32].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i32> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        *self as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        Ok(*self as i32)
+    }
+}
+
+///
+/// [i16] fits entirely within [i64].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i64> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        *self as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        Ok(*self as i64)
+    }
+}
+
+///
+/// [i16] fits entirely within [i128].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i128> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        *self as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        Ok(*self as i128)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// [i16] fits entirely within [isize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<isize> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        *self as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        Ok(*self as isize)
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// [i16] fits entirely within [isize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<isize> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        *self as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        Ok(*self as isize)
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [i16] fits entirely within [isize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<isize> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        *self as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        Ok(*self as isize)
+    }
+}
+
+///
+/// Clamp values from `i16` to -32768..=32767 and cast to `f32`
+///
+impl ClampTo<f32> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(-32768, 32767) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (-32768..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768i16,
+                32767i16
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+///
+/// Clamp values from `f32` to -32768.0..=32767.0 and cast to `i16`
+///
+impl ClampTo<i16> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(-32768.0, 32767.0) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (-32768.0..=32767.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768f32,
+                32767f32
+            )))
+        } else {
+            Ok(*self as i16)
+        }
+    }
+}
+
+///
+/// Clamp values from `i16` to -32768..=32767 and cast to `f64`
+///
+impl ClampTo<f64> for i16 {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(-32768, 32767) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (-32768..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768i16,
+                32767i16
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+///
+/// Clamp values from `f64` to -32768.0..=32767.0 and cast to `i16`
+///
+impl ClampTo<i16> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(-32768.0, 32767.0) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (-32768.0..=32767.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768f64,
+                32767f64
+            )))
+        } else {
+            Ok(*self as i16)
+        }
+    }
+}
+
+///
+/// Clamp values from `i32` to 0..=127 and cast to `u8`
+///
+impl ClampTo<u8> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        (*self).clamp(0, 127) as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i32,
+                127i32
+            )))
+        } else {
+            Ok(*self as u8)
+        }
+    }
+}
+
+///
+/// Clamp values from `i32` to 0..=32767 and cast to `u16`
+///
+impl ClampTo<u16> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        (*self).clamp(0, 32767) as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i32,
+                32767i32
+            )))
+        } else {
+            Ok(*self as u16)
+        }
+    }
+}
+
+///
+/// Clamp values from `i32` to 0..=2147483647 and cast to `u32`
+///
+impl ClampTo<u32> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        (*self).clamp(0, 2147483647) as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i32,
+                2147483647i32
+            )))
+        } else {
+            Ok(*self as u32)
+        }
+    }
+}
+
+///
+/// Clamp values from `i32` to 0..=2147483647 and cast to `u64`
+///
+impl ClampTo<u64> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        (*self).clamp(0, 2147483647) as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i32,
+                2147483647i32
+            )))
+        } else {
+            Ok(*self as u64)
+        }
+    }
+}
+
+///
+/// Clamp values from `i32` to 0..=2147483647 and cast to `u128`
+///
+impl ClampTo<u128> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        (*self).clamp(0, 2147483647) as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i32,
+                2147483647i32
+            )))
+        } else {
+            Ok(*self as u128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `i32` to 0..=32767 and cast to `usize`
+///
+impl ClampTo<usize> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 32767) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i32,
+                32767i32
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `i32` to 0..=2147483647 and cast to `usize`
+///
+impl ClampTo<usize> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 2147483647) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i32,
+                2147483647i32
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `i32` to 0..=2147483647 and cast to `usize`
+///
+impl ClampTo<usize> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 2147483647) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i32,
+                2147483647i32
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+///
+/// Clamp values from `i32` to -128..=127 and cast to `i8`
+///
+impl ClampTo<i8> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(-128, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (-128..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -128i32,
+                127i32
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+///
+/// Clamp values from `i32` to -32768..=32767 and cast to `i16`
+///
+impl ClampTo<i16> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(-32768, 32767) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (-32768..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768i32,
+                32767i32
+            )))
+        } else {
+            Ok(*self as i16)
+        }
+    }
+}
+
+///
+/// [i32] fits entirely within [i64].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i64> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        *self as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        Ok(*self as i64)
+    }
+}
+
+///
+/// [i32] fits entirely within [i128].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i128> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        *self as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        Ok(*self as i128)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `i32` to -32768..=32767 and cast to `isize`
+///
+impl ClampTo<isize> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(-32768, 32767) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (-32768..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768i32,
+                32767i32
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// [i32] fits entirely within [isize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<isize> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        *self as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        Ok(*self as isize)
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [i32] fits entirely within [isize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<isize> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        *self as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        Ok(*self as isize)
+    }
+}
+
+///
+/// Clamp values from `i32` to -8388608..=8388607 and cast to `f32`
+///
+impl ClampTo<f32> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(-8388608, 8388607) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (-8388608..=8388607).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -8388608i32,
+                8388607i32
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+///
+/// Clamp values from `f32` to -8388608.0..=8388607.0 and cast to `i32`
+///
+impl ClampTo<i32> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        (*self).clamp(-8388608.0, 8388607.0) as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        if (-8388608.0..=8388607.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -8388608f32,
+                8388607f32
+            )))
+        } else {
+            Ok(*self as i32)
+        }
+    }
+}
+
+///
+/// Clamp values from `i32` to -2147483648..=2147483647 and cast to `f64`
+///
+impl ClampTo<f64> for i32 {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(-2147483648, 2147483647) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (-2147483648..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -2147483648i32,
+                2147483647i32
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+///
+/// Clamp values from `f64` to -2147483648.0..=2147483647.0 and cast to `i32`
+///
+impl ClampTo<i32> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        (*self).clamp(-2147483648.0, 2147483647.0) as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        if (-2147483648.0..=2147483647.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -2147483648f64,
+                2147483647f64
+            )))
+        } else {
+            Ok(*self as i32)
+        }
+    }
+}
+
+///
+/// Clamp values from `i64` to 0..=127 and cast to `u8`
+///
+impl ClampTo<u8> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        (*self).clamp(0, 127) as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i64,
+                127i64
+            )))
+        } else {
+            Ok(*self as u8)
+        }
+    }
+}
+
+///
+/// Clamp values from `i64` to 0..=32767 and cast to `u16`
+///
+impl ClampTo<u16> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        (*self).clamp(0, 32767) as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i64,
+                32767i64
+            )))
+        } else {
+            Ok(*self as u16)
+        }
+    }
+}
+
+///
+/// Clamp values from `i64` to 0..=2147483647 and cast to `u32`
+///
+impl ClampTo<u32> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        (*self).clamp(0, 2147483647) as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i64,
+                2147483647i64
+            )))
+        } else {
+            Ok(*self as u32)
+        }
+    }
+}
+
+///
+/// Clamp values from `i64` to 0..=9223372036854775807 and cast to `u64`
+///
+impl ClampTo<u64> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        (*self).clamp(0, 9223372036854775807) as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i64,
+                9223372036854775807i64
+            )))
+        } else {
+            Ok(*self as u64)
+        }
+    }
+}
+
+///
+/// Clamp values from `i64` to 0..=9223372036854775807 and cast to `u128`
+///
+impl ClampTo<u128> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        (*self).clamp(0, 9223372036854775807) as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i64,
+                9223372036854775807i64
+            )))
+        } else {
+            Ok(*self as u128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `i64` to 0..=32767 and cast to `usize`
+///
+impl ClampTo<usize> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 32767) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i64,
+                32767i64
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `i64` to 0..=2147483647 and cast to `usize`
+///
+impl ClampTo<usize> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 2147483647) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i64,
+                2147483647i64
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `i64` to 0..=9223372036854775807 and cast to `usize`
+///
+impl ClampTo<usize> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 9223372036854775807) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i64,
+                9223372036854775807i64
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+///
+/// Clamp values from `i64` to -128..=127 and cast to `i8`
+///
+impl ClampTo<i8> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(-128, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (-128..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -128i64,
+                127i64
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+///
+/// Clamp values from `i64` to -32768..=32767 and cast to `i16`
+///
+impl ClampTo<i16> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(-32768, 32767) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (-32768..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768i64,
+                32767i64
+            )))
+        } else {
+            Ok(*self as i16)
+        }
+    }
+}
+
+///
+/// Clamp values from `i64` to -2147483648..=2147483647 and cast to `i32`
+///
+impl ClampTo<i32> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        (*self).clamp(-2147483648, 2147483647) as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        if (-2147483648..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -2147483648i64,
+                2147483647i64
+            )))
+        } else {
+            Ok(*self as i32)
+        }
+    }
+}
+
+///
+/// [i64] fits entirely within [i128].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i128> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        *self as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        Ok(*self as i128)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `i64` to -32768..=32767 and cast to `isize`
+///
+impl ClampTo<isize> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(-32768, 32767) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (-32768..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768i64,
+                32767i64
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `i64` to -2147483648..=2147483647 and cast to `isize`
+///
+impl ClampTo<isize> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(-2147483648, 2147483647) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (-2147483648..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -2147483648i64,
+                2147483647i64
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [i64] fits entirely within [isize].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<isize> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        *self as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        Ok(*self as isize)
+    }
+}
+
+///
+/// Clamp values from `i64` to -8388608..=8388607 and cast to `f32`
+///
+impl ClampTo<f32> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(-8388608, 8388607) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (-8388608..=8388607).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -8388608i64,
+                8388607i64
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+///
+/// Clamp values from `f32` to -8388608.0..=8388607.0 and cast to `i64`
+///
+impl ClampTo<i64> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        (*self).clamp(-8388608.0, 8388607.0) as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        if (-8388608.0..=8388607.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -8388608f32,
+                8388607f32
+            )))
+        } else {
+            Ok(*self as i64)
+        }
+    }
+}
+
+///
+/// Clamp values from `i64` to -4503599627370496..=4503599627370495 and cast to `f64`
+///
+impl ClampTo<f64> for i64 {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(-4503599627370496, 4503599627370495) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (-4503599627370496..=4503599627370495).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -4503599627370496i64,
+                4503599627370495i64
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+///
+/// Clamp values from `f64` to -4503599627370496.0..=4503599627370495.0 and cast to `i64`
+///
+impl ClampTo<i64> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        (*self).clamp(-4503599627370496.0, 4503599627370495.0) as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        if (-4503599627370496.0..=4503599627370495.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -4503599627370496f64,
+                4503599627370495f64
+            )))
+        } else {
+            Ok(*self as i64)
+        }
+    }
+}
+
+///
+/// Clamp values from `i128` to 0..=127 and cast to `u8`
+///
+impl ClampTo<u8> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        (*self).clamp(0, 127) as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i128,
+                127i128
+            )))
+        } else {
+            Ok(*self as u8)
+        }
+    }
+}
+
+///
+/// Clamp values from `i128` to 0..=32767 and cast to `u16`
+///
+impl ClampTo<u16> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        (*self).clamp(0, 32767) as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i128,
+                32767i128
+            )))
+        } else {
+            Ok(*self as u16)
+        }
+    }
+}
+
+///
+/// Clamp values from `i128` to 0..=2147483647 and cast to `u32`
+///
+impl ClampTo<u32> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        (*self).clamp(0, 2147483647) as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i128,
+                2147483647i128
+            )))
+        } else {
+            Ok(*self as u32)
+        }
+    }
+}
+
+///
+/// Clamp values from `i128` to 0..=9223372036854775807 and cast to `u64`
+///
+impl ClampTo<u64> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        (*self).clamp(0, 9223372036854775807) as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i128,
+                9223372036854775807i128
+            )))
+        } else {
+            Ok(*self as u64)
+        }
+    }
+}
+
+///
+/// Clamp values from `i128` to 0..=170141183460469231731687303715884105727 and cast to `u128`
+///
+impl ClampTo<u128> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        (*self).clamp(0, 170141183460469231731687303715884105727) as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        if (0..=170141183460469231731687303715884105727).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i128,
+                170141183460469231731687303715884105727i128
+            )))
+        } else {
+            Ok(*self as u128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `i128` to 0..=32767 and cast to `usize`
+///
+impl ClampTo<usize> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 32767) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i128,
+                32767i128
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `i128` to 0..=2147483647 and cast to `usize`
+///
+impl ClampTo<usize> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 2147483647) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i128,
+                2147483647i128
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `i128` to 0..=9223372036854775807 and cast to `usize`
+///
+impl ClampTo<usize> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 9223372036854775807) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0i128,
+                9223372036854775807i128
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+///
+/// Clamp values from `i128` to -128..=127 and cast to `i8`
+///
+impl ClampTo<i8> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(-128, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (-128..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -128i128,
+                127i128
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+///
+/// Clamp values from `i128` to -32768..=32767 and cast to `i16`
+///
+impl ClampTo<i16> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(-32768, 32767) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (-32768..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768i128,
+                32767i128
+            )))
+        } else {
+            Ok(*self as i16)
+        }
+    }
+}
+
+///
+/// Clamp values from `i128` to -2147483648..=2147483647 and cast to `i32`
+///
+impl ClampTo<i32> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        (*self).clamp(-2147483648, 2147483647) as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        if (-2147483648..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -2147483648i128,
+                2147483647i128
+            )))
+        } else {
+            Ok(*self as i32)
+        }
+    }
+}
+
+///
+/// Clamp values from `i128` to -9223372036854775808..=9223372036854775807 and cast to `i64`
+///
+impl ClampTo<i64> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        (*self).clamp(-9223372036854775808, 9223372036854775807) as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        if (-9223372036854775808..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -9223372036854775808i128,
+                9223372036854775807i128
+            )))
+        } else {
+            Ok(*self as i64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `i128` to -32768..=32767 and cast to `isize`
+///
+impl ClampTo<isize> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(-32768, 32767) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (-32768..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768i128,
+                32767i128
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `i128` to -2147483648..=2147483647 and cast to `isize`
+///
+impl ClampTo<isize> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(-2147483648, 2147483647) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (-2147483648..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -2147483648i128,
+                2147483647i128
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `i128` to -9223372036854775808..=9223372036854775807 and cast to `isize`
+///
+impl ClampTo<isize> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(-9223372036854775808, 9223372036854775807) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (-9223372036854775808..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -9223372036854775808i128,
+                9223372036854775807i128
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+///
+/// Clamp values from `i128` to -8388608..=8388607 and cast to `f32`
+///
+impl ClampTo<f32> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(-8388608, 8388607) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (-8388608..=8388607).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -8388608i128,
+                8388607i128
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+///
+/// Clamp values from `f32` to -8388608.0..=8388607.0 and cast to `i128`
+///
+impl ClampTo<i128> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        (*self).clamp(-8388608.0, 8388607.0) as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        if (-8388608.0..=8388607.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -8388608f32,
+                8388607f32
+            )))
+        } else {
+            Ok(*self as i128)
+        }
+    }
+}
+
+///
+/// Clamp values from `i128` to -4503599627370496..=4503599627370495 and cast to `f64`
+///
+impl ClampTo<f64> for i128 {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(-4503599627370496, 4503599627370495) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (-4503599627370496..=4503599627370495).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -4503599627370496i128,
+                4503599627370495i128
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+///
+/// Clamp values from `f64` to -4503599627370496.0..=4503599627370495.0 and cast to `i128`
+///
+impl ClampTo<i128> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        (*self).clamp(-4503599627370496.0, 4503599627370495.0) as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        if (-4503599627370496.0..=4503599627370495.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -4503599627370496f64,
+                4503599627370495f64
+            )))
+        } else {
+            Ok(*self as i128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `isize` to 0..=127 and cast to `u8`
+///
+impl ClampTo<u8> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        (*self).clamp(0, 127) as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                127isize
+            )))
+        } else {
+            Ok(*self as u8)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `isize` to 0..=127 and cast to `u8`
+///
+impl ClampTo<u8> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        (*self).clamp(0, 127) as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                127isize
+            )))
+        } else {
+            Ok(*self as u8)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `isize` to 0..=127 and cast to `u8`
+///
+impl ClampTo<u8> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u8 {
+        (*self).clamp(0, 127) as u8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u8, ClampError> {
+        if (0..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                127isize
+            )))
+        } else {
+            Ok(*self as u8)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `isize` to 0..=32767 and cast to `u16`
+///
+impl ClampTo<u16> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        (*self).clamp(0, 32767) as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                32767isize
+            )))
+        } else {
+            Ok(*self as u16)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `isize` to 0..=32767 and cast to `u16`
+///
+impl ClampTo<u16> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        (*self).clamp(0, 32767) as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                32767isize
+            )))
+        } else {
+            Ok(*self as u16)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `isize` to 0..=32767 and cast to `u16`
+///
+impl ClampTo<u16> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u16 {
+        (*self).clamp(0, 32767) as u16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u16, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                32767isize
+            )))
+        } else {
+            Ok(*self as u16)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `isize` to 0..=32767 and cast to `u32`
+///
+impl ClampTo<u32> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        (*self).clamp(0, 32767) as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                32767isize
+            )))
+        } else {
+            Ok(*self as u32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `isize` to 0..=2147483647 and cast to `u32`
+///
+impl ClampTo<u32> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        (*self).clamp(0, 2147483647) as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                2147483647isize
+            )))
+        } else {
+            Ok(*self as u32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `isize` to 0..=2147483647 and cast to `u32`
+///
+impl ClampTo<u32> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u32 {
+        (*self).clamp(0, 2147483647) as u32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u32, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                2147483647isize
+            )))
+        } else {
+            Ok(*self as u32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `isize` to 0..=32767 and cast to `u64`
+///
+impl ClampTo<u64> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        (*self).clamp(0, 32767) as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                32767isize
+            )))
+        } else {
+            Ok(*self as u64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `isize` to 0..=2147483647 and cast to `u64`
+///
+impl ClampTo<u64> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        (*self).clamp(0, 2147483647) as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                2147483647isize
+            )))
+        } else {
+            Ok(*self as u64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `isize` to 0..=9223372036854775807 and cast to `u64`
+///
+impl ClampTo<u64> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u64 {
+        (*self).clamp(0, 9223372036854775807) as u64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u64, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                9223372036854775807isize
+            )))
+        } else {
+            Ok(*self as u64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `isize` to 0..=32767 and cast to `u128`
+///
+impl ClampTo<u128> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        (*self).clamp(0, 32767) as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                32767isize
+            )))
+        } else {
+            Ok(*self as u128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `isize` to 0..=2147483647 and cast to `u128`
+///
+impl ClampTo<u128> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        (*self).clamp(0, 2147483647) as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                2147483647isize
+            )))
+        } else {
+            Ok(*self as u128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `isize` to 0..=9223372036854775807 and cast to `u128`
+///
+impl ClampTo<u128> for isize {
+    #[inline]
+    fn clamp_to(&self) -> u128 {
+        (*self).clamp(0, 9223372036854775807) as u128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<u128, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                9223372036854775807isize
+            )))
+        } else {
+            Ok(*self as u128)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `isize` to 0..=32767 and cast to `usize`
+///
+impl ClampTo<usize> for isize {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 32767) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                32767isize
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `isize` to 0..=2147483647 and cast to `usize`
+///
+impl ClampTo<usize> for isize {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 2147483647) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                2147483647isize
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `isize` to 0..=9223372036854775807 and cast to `usize`
+///
+impl ClampTo<usize> for isize {
+    #[inline]
+    fn clamp_to(&self) -> usize {
+        (*self).clamp(0, 9223372036854775807) as usize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<usize, ClampError> {
+        if (0..=9223372036854775807).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                0isize,
+                9223372036854775807isize
+            )))
+        } else {
+            Ok(*self as usize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `isize` to -128..=127 and cast to `i8`
+///
+impl ClampTo<i8> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(-128, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (-128..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -128isize,
+                127isize
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `isize` to -128..=127 and cast to `i8`
+///
+impl ClampTo<i8> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(-128, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (-128..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -128isize,
+                127isize
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `isize` to -128..=127 and cast to `i8`
+///
+impl ClampTo<i8> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i8 {
+        (*self).clamp(-128, 127) as i8
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i8, ClampError> {
+        if (-128..=127).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -128isize,
+                127isize
+            )))
+        } else {
+            Ok(*self as i8)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// [isize] fits entirely within [i16].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i16> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        *self as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        Ok(*self as i16)
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `isize` to -32768..=32767 and cast to `i16`
+///
+impl ClampTo<i16> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(-32768, 32767) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (-32768..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768isize,
+                32767isize
+            )))
+        } else {
+            Ok(*self as i16)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `isize` to -32768..=32767 and cast to `i16`
+///
+impl ClampTo<i16> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i16 {
+        (*self).clamp(-32768, 32767) as i16
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i16, ClampError> {
+        if (-32768..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768isize,
+                32767isize
+            )))
+        } else {
+            Ok(*self as i16)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// [isize] fits entirely within [i32].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i32> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        *self as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        Ok(*self as i32)
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// [isize] fits entirely within [i32].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i32> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        *self as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        Ok(*self as i32)
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `isize` to -2147483648..=2147483647 and cast to `i32`
+///
+impl ClampTo<i32> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i32 {
+        (*self).clamp(-2147483648, 2147483647) as i32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i32, ClampError> {
+        if (-2147483648..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -2147483648isize,
+                2147483647isize
+            )))
+        } else {
+            Ok(*self as i32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// [isize] fits entirely within [i64].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i64> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        *self as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        Ok(*self as i64)
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// [isize] fits entirely within [i64].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i64> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        *self as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        Ok(*self as i64)
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [isize] fits entirely within [i64].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i64> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i64 {
+        *self as i64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i64, ClampError> {
+        Ok(*self as i64)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// [isize] fits entirely within [i128].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i128> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        *self as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        Ok(*self as i128)
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// [isize] fits entirely within [i128].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i128> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        *self as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        Ok(*self as i128)
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// [isize] fits entirely within [i128].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<i128> for isize {
+    #[inline]
+    fn clamp_to(&self) -> i128 {
+        *self as i128
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<i128, ClampError> {
+        Ok(*self as i128)
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `isize` to -32768..=32767 and cast to `f32`
+///
+impl ClampTo<f32> for isize {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(-32768, 32767) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (-32768..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768isize,
+                32767isize
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `f32` to -32768.0..=32767.0 and cast to `isize`
+///
+impl ClampTo<isize> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(-32768.0, 32767.0) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (-32768.0..=32767.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768f32,
+                32767f32
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `isize` to -8388608..=8388607 and cast to `f32`
+///
+impl ClampTo<f32> for isize {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(-8388608, 8388607) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (-8388608..=8388607).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -8388608isize,
+                8388607isize
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `f32` to -8388608.0..=8388607.0 and cast to `isize`
+///
+impl ClampTo<isize> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(-8388608.0, 8388607.0) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (-8388608.0..=8388607.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -8388608f32,
+                8388607f32
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `isize` to -8388608..=8388607 and cast to `f32`
+///
+impl ClampTo<f32> for isize {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(-8388608, 8388607) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (-8388608..=8388607).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -8388608isize,
+                8388607isize
+            )))
+        } else {
+            Ok(*self as f32)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `f32` to -8388608.0..=8388607.0 and cast to `isize`
+///
+impl ClampTo<isize> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(-8388608.0, 8388607.0) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (-8388608.0..=8388607.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -8388608f32,
+                8388607f32
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `isize` to -32768..=32767 and cast to `f64`
+///
+impl ClampTo<f64> for isize {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(-32768, 32767) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (-32768..=32767).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768isize,
+                32767isize
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "16")]
+///
+/// Clamp values from `f64` to -32768.0..=32767.0 and cast to `isize`
+///
+impl ClampTo<isize> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(-32768.0, 32767.0) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (-32768.0..=32767.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -32768f64,
+                32767f64
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `isize` to -2147483648..=2147483647 and cast to `f64`
+///
+impl ClampTo<f64> for isize {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(-2147483648, 2147483647) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (-2147483648..=2147483647).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -2147483648isize,
+                2147483647isize
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+///
+/// Clamp values from `f64` to -2147483648.0..=2147483647.0 and cast to `isize`
+///
+impl ClampTo<isize> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(-2147483648.0, 2147483647.0) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (-2147483648.0..=2147483647.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -2147483648f64,
+                2147483647f64
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `isize` to -4503599627370496..=4503599627370495 and cast to `f64`
+///
+impl ClampTo<f64> for isize {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        (*self).clamp(-4503599627370496, 4503599627370495) as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        if (-4503599627370496..=4503599627370495).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -4503599627370496isize,
+                4503599627370495isize
+            )))
+        } else {
+            Ok(*self as f64)
+        }
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+///
+/// Clamp values from `f64` to -4503599627370496.0..=4503599627370495.0 and cast to `isize`
+///
+impl ClampTo<isize> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> isize {
+        (*self).clamp(-4503599627370496.0, 4503599627370495.0) as isize
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<isize, ClampError> {
+        if (-4503599627370496.0..=4503599627370495.0).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {}..={}",
+                self,
+                -4503599627370496f64,
+                4503599627370495f64
+            )))
+        } else {
+            Ok(*self as isize)
+        }
+    }
+}
+
+///
+/// [f32] fits entirely within [f64].  No clamping needed and 
+/// checked_clamp_to will never return an [Err(ClampError)]
+///
+impl ClampTo<f64> for f32 {
+    #[inline]
+    fn clamp_to(&self) -> f64 {
+        *self as f64
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f64, ClampError> {
+        Ok(*self as f64)
+    }
+}
+
+///
+/// Clamp values from `f64` to -3.4028235e38..=3.4028235e38 and cast to `f32`
+///
+impl ClampTo<f32> for f64 {
+    #[inline]
+    fn clamp_to(&self) -> f32 {
+        (*self).clamp(-3.4028235e38, 3.4028235e38) as f32
+    }
+
+    #[inline]
+    fn checked_clamp_to(&self) -> Result<f32, ClampError> {
+        if (-3.4028235e38..=3.4028235e38).contains(self) {
+            Err(ClampError(format!(
+                "{} does not fit within {:?}..={:?}",
+                self,
+                -3.4028235e38f64,
+                3.4028235e38f64
+            )))
+        } else {
+            Ok(*self as f32)
+        }
     }
 }

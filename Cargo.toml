@@ -2,5 +2,7 @@
 name = "clamp_to"
 version = "0.1.0"
 edition = "2021"
+authors = ["Michael Conrad"]
+license = "MIT"
 
 [dependencies]
