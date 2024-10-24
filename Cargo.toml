@@ -4,5 +4,9 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Michael Conrad"]
 license = "MIT"
+description = "Clamp integer and float values to the values that fit within both the original number type and the receiving type"
+homepage = "https://github.com/mmitton/clamp_to"
+repository = "https://github.com/mmitton/clamp_to"
+readme = "README.md"
 
 [dependencies]
