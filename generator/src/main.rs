@@ -75,19 +75,25 @@ trait Integer {
     fn max(bits: u32) -> Self::Holder;
 }
 
-trait Float {
+trait Float: Debug {
     const NAME: &'static str;
     const MANTISSA_DIGITS: u32;
+    const MIN: Self;
+    const MAX: Self;
 }
 
 impl Float for f32 {
     const NAME: &'static str = "f32";
     const MANTISSA_DIGITS: u32 = f32::MANTISSA_DIGITS;
+    const MIN: Self = f32::MIN;
+    const MAX: Self = f32::MAX;
 }
 
 impl Float for f64 {
     const NAME: &'static str = "f64";
     const MANTISSA_DIGITS: u32 = f64::MANTISSA_DIGITS;
+    const MIN: Self = f64::MIN;
+    const MAX: Self = f64::MAX;
 }
 
 macro_rules! impl_integer {
@@ -202,6 +208,28 @@ where
     println!("/// | {} | {:?} | {:?} |", T::NAME, min, max);
 }
 
+fn output_doc_limits_float_int<F, T>(system_width: u32)
+where
+    F: Float,
+    T: Integer,
+{
+    let (fbits, tbits) = bits(system_width, &[F::MANTISSA_DIGITS], T::BITS);
+    let (min, max) = min_max_int_float::<T, F>(fbits, tbits);
+    println!("/// | {} | {:?} | {:?} |", T::NAME, min, max);
+}
+
+fn output_doc_limits_float_float<F, T>()
+where
+    F: Float,
+    T: Float,
+{
+    if F::MANTISSA_DIGITS < T::MANTISSA_DIGITS {
+        println!("/// | {} | {:?} | {:?} |", T::NAME, F::MIN, F::MAX);
+    } else {
+        println!("/// | {} | {:?} | {:?} |", T::NAME, T::MIN, T::MAX);
+    }
+}
+
 fn output_clamp_to_int_int<F, T>(system_width: u32)
 where
     F: Integer,
@@ -209,6 +237,7 @@ where
 {
     let (fbits, tbits) = bits(system_width, F::BITS, T::BITS);
     let (min, max) = min_max_int_int::<F, T>(fbits, tbits);
+    println!("    #[inline]");
     println!(
         "    fn limits_to_{}() -> ({}, {}) {{",
         T::NAME,
@@ -235,7 +264,8 @@ where
     } else {
         println!("    #[inline]");
         println!("    fn clamp_to_{}(&self) -> {} {{", T::NAME, T::NAME);
-        println!("        (*self).clamp({}, {}) as {}", min, max, T::NAME);
+        println!("        let (low, high) = Self::limits_to_{}();", T::NAME);
+        println!("        (*self).clamp(low, high) as {}", T::NAME);
         println!("    }}");
         println!();
         println!("    #[inline]");
@@ -259,6 +289,7 @@ where
 {
     let (fbits, tbits) = bits(system_width, F::BITS, &[T::MANTISSA_DIGITS]);
     let (min, max) = min_max_int_float::<F, T>(fbits, tbits);
+    println!("    #[inline]");
     println!(
         "    fn limits_to_{}() -> ({}, {}) {{",
         T::NAME,
@@ -270,7 +301,8 @@ where
     println!();
     println!("    #[inline]");
     println!("    fn clamp_to_{}(&self) -> {} {{", T::NAME, T::NAME);
-    println!("        (*self).clamp({}, {}) as {}", min, max, T::NAME);
+    println!("        let (low, high) = Self::limits_to_{}();", T::NAME);
+    println!("        (*self).clamp(low, high) as {}", T::NAME);
     println!("    }}");
     println!();
     println!("    #[inline]");
@@ -286,72 +318,92 @@ where
     println!();
 }
 
-fn output_clamp_to_float_float(from: &str, to: &str, min_max: bool) {
+fn output_clamp_to_float_int<F, T>(system_width: u32)
+where
+    F: Float,
+    T: Integer,
+{
+    let (fbits, tbits) = bits(system_width, &[F::MANTISSA_DIGITS], T::BITS);
+    let (min, max) = min_max_int_float::<T, F>(fbits, tbits);
+    println!("    #[inline]");
+    println!(
+        "    fn limits_to_{}() -> ({}, {}) {{",
+        T::NAME,
+        F::NAME,
+        F::NAME
+    );
+    println!("        ({:?}., {:?}.)", min, max);
+    println!("    }}");
     println!();
-    if !min_max {
-        println!("///");
-        println!(
-            "/// [{}] fits entirely within [{}].  No clamping needed and ",
-            from, to
-        );
-        println!("/// checked_clamp_to will never return an [Err(ClampError)]");
-        println!("///");
-        println!("impl ClampTo<{}> for {} {{", to, from);
-        println!("    #[inline]");
-        println!("    fn clamp_to(&self) -> {} {{", to);
-        println!("        *self as {}", to);
-        println!("    }}");
-        println!();
-        println!("    #[inline]");
-        println!(
-            "    fn checked_clamp_to(&self) -> Result<{}, ClampError> {{",
-            to
-        );
-        println!("        Ok(*self as {})", to);
-        println!("    }}");
-        println!("}}");
+    println!("    #[inline]");
+    println!("    fn clamp_to_{}(&self) -> {} {{", T::NAME, T::NAME);
+    println!("        let (low, high) = Self::limits_to_{}();", T::NAME);
+    println!("        (*self).clamp(low, high) as {}", T::NAME);
+    println!("    }}");
+    println!();
+    println!("    #[inline]");
+    println!(
+        "    fn try_clamp_to_{}(&self) -> Result<{}, ClampError> {{",
+        T::NAME,
+        T::NAME
+    );
+    println!("        let (low, high) = Self::limits_to_{}();", T::NAME);
+    println!("        ClampError::check(self, low, high)?;");
+    println!("        Ok(*self as {})", T::NAME);
+    println!("    }}");
+    println!();
+}
+
+fn output_clamp_to_float_float<F, T>()
+where
+    F: Float,
+    T: Float,
+{
+    println!();
+    println!("    #[inline]");
+    println!(
+        "    fn limits_to_{}() -> ({}, {}) {{",
+        T::NAME,
+        F::NAME,
+        F::NAME
+    );
+    if F::MANTISSA_DIGITS < T::MANTISSA_DIGITS {
+        println!("        ({:?}, {:?})", F::MIN, F::MAX);
     } else {
-        println!("///");
-        println!(
-            "/// Clamp values from `{}` to {:?}..={:?} and cast to `{}`",
-            from,
-            f32::MIN,
-            f32::MAX,
-            to
-        );
-        println!("///");
-        println!("impl ClampTo<{}> for {} {{", to, from);
+        println!("        ({:?}, {:?})", T::MIN, T::MAX);
+    }
+    println!("    }}");
+    if F::MANTISSA_DIGITS < T::MANTISSA_DIGITS {
         println!("    #[inline]");
-        println!("    fn clamp_to(&self) -> {} {{", to);
-        println!(
-            "        (*self).clamp({:?}, {:?}) as {}",
-            f32::MIN,
-            f32::MAX,
-            to
-        );
+        println!("    fn clamp_to_{}(&self) -> {} {{", T::NAME, T::NAME);
+        println!("        *self as {}", T::NAME);
         println!("    }}");
         println!();
         println!("    #[inline]");
         println!(
-            "    fn checked_clamp_to(&self) -> Result<{}, ClampError> {{",
-            to
+            "    fn try_clamp_to_{}(&self) -> Result<{}, ClampError> {{",
+            T::NAME,
+            T::NAME
         );
-        println!(
-            "        if ({:?}..={:?}).contains(self) {{",
-            f32::MIN,
-            f32::MAX
-        );
-        println!("            Err(ClampError(format!(");
-        println!("                \"{{}} does not fit within {{:?}}..={{:?}}\",");
-        println!("                self,");
-        println!("                {:?}{},", f32::MIN, from);
-        println!("                {:?}{}", f32::MAX, from);
-        println!("            )))");
-        println!("        }} else {{");
-        println!("            Ok(*self as {})", to);
-        println!("        }}");
+        println!("        Ok(*self as {})", T::NAME);
         println!("    }}");
-        println!("}}");
+    } else {
+        println!("    #[inline]");
+        println!("    fn clamp_to_{}(&self) -> {} {{", T::NAME, T::NAME);
+        println!("        let (low, high) = Self::limits_to_{}();", T::NAME);
+        println!("        (*self).clamp(low, high) as {}", T::NAME);
+        println!("    }}");
+        println!();
+        println!("    #[inline]");
+        println!(
+            "    fn try_clamp_to_{}(&self) -> Result<{}, ClampError> {{",
+            T::NAME,
+            T::NAME
+        );
+        println!("        let (low, high) = Self::limits_to_{}();", T::NAME);
+        println!("        ClampError::check(self, low, high)?;");
+        println!("        Ok(*self as {})", T::NAME);
+        println!("    }}");
     }
 }
 
@@ -424,6 +476,44 @@ fn main() {
             output_clamp_to_int_float::<$ty, f64>(system_width);
             println!("}}");
         };
+
+        (FLOAT $ty:ty) => {
+            println!();
+            println!("/// Clamp {} to primitive number types", stringify!($ty));
+            println!("///");
+            println!("/// | To | Min | Max |");
+            println!("/// | --- | --- | --- |");
+            output_doc_limits_float_int::<$ty, u8>(system_width);
+            output_doc_limits_float_int::<$ty, u16>(system_width);
+            output_doc_limits_float_int::<$ty, u32>(system_width);
+            output_doc_limits_float_int::<$ty, u64>(system_width);
+            output_doc_limits_float_int::<$ty, u128>(system_width);
+            output_doc_limits_float_int::<$ty, usize>(system_width);
+            output_doc_limits_float_int::<$ty, i8>(system_width);
+            output_doc_limits_float_int::<$ty, i16>(system_width);
+            output_doc_limits_float_int::<$ty, i32>(system_width);
+            output_doc_limits_float_int::<$ty, i64>(system_width);
+            output_doc_limits_float_int::<$ty, i128>(system_width);
+            output_doc_limits_float_int::<$ty, isize>(system_width);
+            output_doc_limits_float_float::<$ty, f32>();
+            output_doc_limits_float_float::<$ty, f64>();
+            println!("impl Clamp for {} {{", stringify!($ty));
+            output_clamp_to_float_int::<$ty, u8>(system_width);
+            output_clamp_to_float_int::<$ty, u16>(system_width);
+            output_clamp_to_float_int::<$ty, u32>(system_width);
+            output_clamp_to_float_int::<$ty, u64>(system_width);
+            output_clamp_to_float_int::<$ty, u128>(system_width);
+            output_clamp_to_float_int::<$ty, usize>(system_width);
+            output_clamp_to_float_int::<$ty, i8>(system_width);
+            output_clamp_to_float_int::<$ty, i16>(system_width);
+            output_clamp_to_float_int::<$ty, i32>(system_width);
+            output_clamp_to_float_int::<$ty, i64>(system_width);
+            output_clamp_to_float_int::<$ty, i128>(system_width);
+            output_clamp_to_float_int::<$ty, isize>(system_width);
+            output_clamp_to_float_float::<$ty, f32>();
+            output_clamp_to_float_float::<$ty, f64>();
+            println!("}}");
+        };
     }
 
     output_all!(INT u8);
@@ -438,6 +528,9 @@ fn main() {
     output_all!(INT i64);
     output_all!(INT i128);
     output_all!(INT isize);
+
+    output_all!(FLOAT f32);
+    output_all!(FLOAT f64);
 
     // output_clamp_to_float_float("f32", "f64", false);
     // output_clamp_to_float_float("f64", "f32", true);
