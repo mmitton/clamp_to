@@ -45,10 +45,7 @@ impl core::fmt::Debug for ClampError {
 impl std::error::Error for ClampError {}
 
 /// Clamp a value to the intersection of two different types and return the new value as `T`
-pub trait ClampTo<T>
-where
-    Self: Sized,
-{
+pub trait ClampTo<T> {
     /// Clamp `self` to a `T`.  For `Self` types that can be fully contained within `T`,
     /// this should be a straight cast to `T`.
     fn clamp_to(&self) -> T;
@@ -70,7 +67,9 @@ where
     fn checked_clamp_to(&self) -> T;
 
     /// Return the intersecting range between `Self` and `T`
-    fn limits_to() -> (Self, Self);
+    fn limits_to() -> (Self, Self)
+    where
+        Self: Sized;
 }
 
 macro_rules! impl_clamp_to {
@@ -218,11 +217,11 @@ macro_rules! impl_clamp_fns {
         }
 
         #[doc = concat!("Return the intersecting range between `Self` and [", stringify!($ty), "].")]
-        fn $limits_to() -> (Self, Self);
+        fn $limits_to() -> (Self, Self) where Self: Sized;
     };
 }
 
-pub trait Clamp: Sized {
+pub trait Clamp {
     impl_clamp_fns!(
         u8,
         clamp_to_u8,
