@@ -1,7 +1,11 @@
 #![doc = include_str!("../README.md")]
 
-// pub mod clamp_to;
-mod clamp;
+#[cfg(target_pointer_width = "16")]
+mod clamp_16;
+#[cfg(target_pointer_width = "32")]
+mod clamp_32;
+#[cfg(target_pointer_width = "64")]
+mod clamp_64;
 
 /// Error for [ClampTo::try_clamp_to] when the value to be clamped was outside
 /// the intersection of possible values for both types.

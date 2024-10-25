@@ -1,4 +1,5 @@
-use std::fmt::{Debug, Display};
+use std::cmp::Ordering;
+use std::fmt::{Binary, Debug, Display};
 use std::ops::{Not, Shl};
 
 fn min_max_int_int<F, T>(fbits: u32, tbits: u32) -> (F::Holder, F::Holder)
@@ -6,20 +7,37 @@ where
     F: Integer,
     T: Integer,
 {
-    let bits: u32 = fbits.min(tbits);
-
-    let min: F::Holder = match (F::SIGNED, T::SIGNED) {
-        (true, true) => !F::ZERO << (bits - 1),
-        _ => F::ZERO,
+    let min: F::Holder = match fbits.cmp(&tbits) {
+        Ordering::Equal => match (F::SIGNED, T::SIGNED) {
+            (true, true) => F::min(fbits),
+            (true, false) => F::ZERO,
+            (false, _) => F::ZERO,
+        },
+        Ordering::Less => match (F::SIGNED, T::SIGNED) {
+            (true, true) => F::min(fbits),
+            (true, false) => F::ZERO,
+            (false, _) => F::ZERO,
+        },
+        Ordering::Greater => match (F::SIGNED, T::SIGNED) {
+            (true, true) => F::min(tbits),
+            (true, false) => F::ZERO,
+            (false, _) => F::ZERO,
+        },
     };
 
-    let max: F::Holder = match (F::SIGNED, T::SIGNED) {
-        (true, _) | (_, true) => !(!F::ZERO << (bits - 1)),
-        _ => {
-            if bits == fbits {
-                !F::ZERO
+    let max: F::Holder = match fbits.cmp(&tbits) {
+        Ordering::Equal => match (F::SIGNED, T::SIGNED) {
+            (true, true) => F::max(fbits - 1),
+            (true, false) => F::max(fbits - 1),
+            (false, true) => F::max(fbits - 1),
+            (false, false) => F::max(fbits),
+        },
+        Ordering::Less => F::max(fbits),
+        Ordering::Greater => {
+            if T::SIGNED {
+                F::max(tbits - 1)
             } else {
-                !(!F::ZERO << bits)
+                F::max(tbits)
             }
         }
     };
@@ -27,31 +45,15 @@ where
     (min, max)
 }
 
-fn min_max_int_float<F, T>(fbits: u32) -> (F::Holder, F::Holder)
+fn min_max_int_float<F, T>(fbits: u32, tbits: u32) -> (F::Holder, F::Holder)
 where
     F: Integer,
     T: Float,
 {
-    let bits: u32 = fbits.min(T::MANTISSA_DIGITS);
+    let bits: u32 = fbits.min(tbits);
 
-    let min: F::Holder = if !F::SIGNED {
-        // unsigned integer
-        F::ZERO
-    } else {
-        // signed integer
-        !F::ZERO << (bits - 1)
-    };
-    let max: F::Holder = if !F::SIGNED {
-        // unsigned integer
-        if bits == fbits {
-            F::max(fbits)
-        } else {
-            !(!F::ZERO << bits)
-        }
-    } else {
-        // signed integer
-        !(!F::ZERO << (bits - 1))
-    };
+    let min: F::Holder = F::min(bits);
+    let max: F::Holder = F::max(bits);
 
     (min, max)
 }
@@ -60,6 +62,7 @@ trait Integer {
     type Holder: Not<Output = Self::Holder>
         + Shl<u32, Output = Self::Holder>
         + PartialEq
+        + Binary
         + Display
         + Debug;
     const NAME: &'static str;
@@ -98,13 +101,37 @@ macro_rules! impl_integer {
             const BITS: &[u32] = &[<$ty>::BITS];
 
             fn min(bits: u32) -> Self::Holder {
-                assert_eq!(bits, <$ty>::BITS);
-                <$ty>::MIN
+                let min = if Self::SIGNED {
+                    !Self::ZERO << (bits - 1)
+                } else {
+                    0
+                };
+
+                if bits == <$ty>::BITS {
+                    assert_eq!(min, <$ty>::MIN);
+                }
+                min
             }
 
             fn max(bits: u32) -> Self::Holder {
-                assert_eq!(bits, <$ty>::BITS);
-                <$ty>::MAX
+                let max = if Self::SIGNED {
+                    if bits == <$ty>::BITS {
+                        !(!Self::ZERO << (bits - 1))
+                    } else {
+                        !(!Self::ZERO << bits)
+                    }
+                } else {
+                    if bits == <$ty>::BITS {
+                        !Self::ZERO
+                    } else {
+                        !(!Self::ZERO << bits)
+                    }
+                };
+
+                if bits == <$ty>::BITS {
+                    assert_eq!(max, <$ty>::MAX);
+                }
+                max
             }
         }
     };
@@ -130,21 +157,11 @@ impl Integer for usize {
     const BITS: &[u32] = &[16, 32, 64];
 
     fn min(bits: u32) -> Self::Holder {
-        match bits {
-            16 => u16::MIN as Self::Holder,
-            32 => u32::MIN as Self::Holder,
-            64 => u64::MIN as Self::Holder,
-            _ => panic!(),
-        }
+        <Self::Holder as Integer>::min(bits)
     }
 
     fn max(bits: u32) -> Self::Holder {
-        match bits {
-            16 => u16::MAX as Self::Holder,
-            32 => u32::MAX as Self::Holder,
-            64 => u64::MAX as Self::Holder,
-            _ => panic!(),
-        }
+        <Self::Holder as Integer>::max(bits)
     }
 }
 
@@ -157,131 +174,70 @@ impl Integer for isize {
     const BITS: &[u32] = &[16, 32, 64];
 
     fn min(bits: u32) -> Self::Holder {
-        match bits {
-            16 => i16::MIN as Self::Holder,
-            32 => i32::MIN as Self::Holder,
-            64 => i64::MIN as Self::Holder,
-            _ => panic!(),
-        }
+        <Self::Holder as Integer>::min(bits)
     }
 
     fn max(bits: u32) -> Self::Holder {
-        match bits {
-            16 => i16::MAX as Self::Holder,
-            32 => i32::MAX as Self::Holder,
-            64 => i64::MAX as Self::Holder,
-            _ => panic!(),
-        }
+        <Self::Holder as Integer>::max(bits)
     }
 }
 
-fn output_doc_limits_int_int<F, T>()
+fn output_doc_limits_int_int<F, T>(system_width: u32)
 where
     F: Integer,
     T: Integer,
 {
-    for (system_width, fbits, tbits) in bits(F::BITS, T::BITS) {
-        let (min, max) = min_max_int_int::<F, T>(fbits, tbits);
-        println!("/// Limits to {} => {:?}..={:?}", T::NAME, min, max);
-    }
+    let (fbits, tbits) = bits(system_width, F::BITS, T::BITS);
+    let (min, max) = min_max_int_int::<F, T>(fbits, tbits);
+    println!("/// | {} | {:?} | {:?} |", T::NAME, min, max);
 }
 
-fn output_clamp_to_int_int<F, T>()
-where
-    F: Integer,
-    T: Integer,
-{
-    for (system_width, fbits, tbits) in bits(F::BITS, T::BITS) {
-        let (min, max) = min_max_int_int::<F, T>(fbits, tbits);
-        if let Some(system_width) = system_width {
-            println!("    #[cfg(target_pointer_width = \"{system_width}\")]");
-        }
-        println!(
-            "    fn limits_to_{}() -> ({}, {}) {{",
-            T::NAME,
-            F::NAME,
-            F::NAME
-        );
-        println!("        ({:?}, {:?})", min, max);
-        println!("    }}");
-        println!();
-        if min == F::min(fbits) && max == F::max(fbits) {
-            if let Some(system_width) = system_width {
-                println!("    #[cfg(target_pointer_width = \"{system_width}\")]");
-            }
-            println!("    #[inline]");
-            println!("    fn clamp_to_{}(&self) -> {} {{", T::NAME, T::NAME);
-            println!("        *self as {}", T::NAME);
-            println!("    }}");
-            println!();
-            println!("    #[inline]");
-            if let Some(system_width) = system_width {
-                println!("    #[cfg(target_pointer_width = \"{system_width}\")]");
-            }
-            println!(
-                "    fn try_clamp_to_{}(&self) -> Result<{}, ClampError> {{",
-                T::NAME,
-                T::NAME
-            );
-            println!("        Ok(*self as {})", T::NAME);
-            println!("    }}");
-        } else {
-            if let Some(system_width) = system_width {
-                println!("    #[cfg(target_pointer_width = \"{system_width}\")]");
-            }
-            println!("    #[inline]");
-            println!("    fn clamp_to_{}(&self) -> {} {{", T::NAME, T::NAME);
-            println!("        (*self).clamp({}, {}) as {}", min, max, T::NAME);
-            println!("    }}");
-            println!();
-            if let Some(system_width) = system_width {
-                println!("    #[cfg(target_pointer_width = \"{system_width}\")]");
-            }
-            println!("    #[inline]");
-            println!(
-                "    fn try_clamp_to_{}(&self) -> Result<{}, ClampError> {{",
-                T::NAME,
-                T::NAME
-            );
-            println!("        let (low, high) = Self::limits_to_{}();", T::NAME);
-            println!("        ClampError::check(self, low, high)?;");
-            println!("        Ok(*self as {})", T::NAME);
-            println!("    }}");
-        }
-        println!();
-    }
-}
-
-fn output_clamp_to_int_float<F, T>()
+fn output_doc_limits_int_float<F, T>(system_width: u32)
 where
     F: Integer,
     T: Float,
 {
-    for fbits in F::BITS.iter().copied() {
-        let (min, max) = min_max_int_float::<F, T>(fbits);
-        if F::BITS.len() > 1 {
-            println!("#[cfg(target_pointer_width = \"{fbits}\")]");
-        }
-        println!(
-            "    fn limits_to_{}() -> ({}, {}) {{",
-            T::NAME,
-            F::NAME,
-            F::NAME
-        );
-        println!("        ({:?}, {:?})", min, max);
+    let (fbits, tbits) = bits(system_width, F::BITS, &[T::MANTISSA_DIGITS]);
+    let (min, max) = min_max_int_float::<F, T>(fbits, tbits);
+    println!("/// | {} | {:?} | {:?} |", T::NAME, min, max);
+}
+
+fn output_clamp_to_int_int<F, T>(system_width: u32)
+where
+    F: Integer,
+    T: Integer,
+{
+    let (fbits, tbits) = bits(system_width, F::BITS, T::BITS);
+    let (min, max) = min_max_int_int::<F, T>(fbits, tbits);
+    println!(
+        "    fn limits_to_{}() -> ({}, {}) {{",
+        T::NAME,
+        F::NAME,
+        F::NAME
+    );
+    println!("        ({:?}, {:?})", min, max);
+    println!("    }}");
+    println!();
+    if min == F::min(fbits) && max == F::max(fbits) {
+        println!("    #[inline]");
+        println!("    fn clamp_to_{}(&self) -> {} {{", T::NAME, T::NAME);
+        println!("        *self as {}", T::NAME);
         println!("    }}");
         println!();
-        if F::BITS.len() > 1 {
-            println!("#[cfg(target_pointer_width = \"{fbits}\")]");
-        }
+        println!("    #[inline]");
+        println!(
+            "    fn try_clamp_to_{}(&self) -> Result<{}, ClampError> {{",
+            T::NAME,
+            T::NAME
+        );
+        println!("        Ok(*self as {})", T::NAME);
+        println!("    }}");
+    } else {
         println!("    #[inline]");
         println!("    fn clamp_to_{}(&self) -> {} {{", T::NAME, T::NAME);
         println!("        (*self).clamp({}, {}) as {}", min, max, T::NAME);
         println!("    }}");
         println!();
-        if F::BITS.len() > 1 {
-            println!("#[cfg(target_pointer_width = \"{fbits}\")]");
-        }
         println!("    #[inline]");
         println!(
             "    fn try_clamp_to_{}(&self) -> Result<{}, ClampError> {{",
@@ -292,8 +248,42 @@ where
         println!("        ClampError::check(self, low, high)?;");
         println!("        Ok(*self as {})", T::NAME);
         println!("    }}");
-        println!();
     }
+    println!();
+}
+
+fn output_clamp_to_int_float<F, T>(system_width: u32)
+where
+    F: Integer,
+    T: Float,
+{
+    let (fbits, tbits) = bits(system_width, F::BITS, &[T::MANTISSA_DIGITS]);
+    let (min, max) = min_max_int_float::<F, T>(fbits, tbits);
+    println!(
+        "    fn limits_to_{}() -> ({}, {}) {{",
+        T::NAME,
+        F::NAME,
+        F::NAME
+    );
+    println!("        ({:?}, {:?})", min, max);
+    println!("    }}");
+    println!();
+    println!("    #[inline]");
+    println!("    fn clamp_to_{}(&self) -> {} {{", T::NAME, T::NAME);
+    println!("        (*self).clamp({}, {}) as {}", min, max, T::NAME);
+    println!("    }}");
+    println!();
+    println!("    #[inline]");
+    println!(
+        "    fn try_clamp_to_{}(&self) -> Result<{}, ClampError> {{",
+        T::NAME,
+        T::NAME
+    );
+    println!("        let (low, high) = Self::limits_to_{}();", T::NAME);
+    println!("        ClampError::check(self, low, high)?;");
+    println!("        Ok(*self as {})", T::NAME);
+    println!("    }}");
+    println!();
 }
 
 fn output_clamp_to_float_float(from: &str, to: &str, min_max: bool) {
@@ -365,35 +355,27 @@ fn output_clamp_to_float_float(from: &str, to: &str, min_max: bool) {
     }
 }
 
-fn bits(fbits: &[u32], tbits: &[u32]) -> Vec<(Option<u32>, u32, u32)> {
+fn bits(system_width: u32, fbits: &[u32], tbits: &[u32]) -> (u32, u32) {
     if fbits.len() == 1 && tbits.len() == 1 {
-        vec![(None, fbits[0], tbits[0])]
+        (fbits[0], tbits[0])
     } else if fbits.len() != 1 && tbits.len() == 1 {
-        let tbits = tbits[0];
-        fbits
-            .iter()
-            .copied()
-            .map(|fbits| (Some(fbits), fbits, tbits))
-            .collect()
+        assert!(fbits.contains(&system_width));
+        (system_width, tbits[0])
     } else if fbits.len() == 1 && tbits.len() != 1 {
-        let fbits = fbits[0];
-        tbits
-            .iter()
-            .copied()
-            .map(|tbits| (Some(tbits), fbits, tbits))
-            .collect()
+        assert!(tbits.contains(&system_width));
+        (fbits[0], system_width)
     } else {
-        assert_eq!(fbits, tbits);
-        fbits
-            .iter()
-            .copied()
-            .zip(tbits.iter().copied())
-            .map(|(fbits, tbits)| (Some(fbits), fbits, tbits))
-            .collect()
+        assert!(fbits.contains(&system_width));
+        assert!(tbits.contains(&system_width));
+        (system_width, system_width)
     }
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let system_width: u32 = args.last().unwrap().parse().unwrap();
+    assert!([16, 32, 64].contains(&system_width));
+
     println!("#![allow(clippy::cast_possible_truncation)]");
     println!("#![allow(clippy::cast_lossless)]");
     println!("#![allow(clippy::cast_sign_loss)]");
@@ -408,33 +390,38 @@ fn main() {
         (INT $ty:ty) => {
             println!();
             println!("/// Clamp {} to primitive number types", stringify!($ty));
-            output_doc_limits_int_int::<$ty, u8>();
-            output_doc_limits_int_int::<$ty, u16>();
-            output_doc_limits_int_int::<$ty, u32>();
-            output_doc_limits_int_int::<$ty, u64>();
-            output_doc_limits_int_int::<$ty, u128>();
-            output_doc_limits_int_int::<$ty, usize>();
-            output_doc_limits_int_int::<$ty, i8>();
-            output_doc_limits_int_int::<$ty, i16>();
-            output_doc_limits_int_int::<$ty, i32>();
-            output_doc_limits_int_int::<$ty, i64>();
-            output_doc_limits_int_int::<$ty, i128>();
-            output_doc_limits_int_int::<$ty, isize>();
+            println!("///");
+            println!("/// | To | Min | Max |");
+            println!("/// | --- | --- | --- |");
+            output_doc_limits_int_int::<$ty, u8>(system_width);
+            output_doc_limits_int_int::<$ty, u16>(system_width);
+            output_doc_limits_int_int::<$ty, u32>(system_width);
+            output_doc_limits_int_int::<$ty, u64>(system_width);
+            output_doc_limits_int_int::<$ty, u128>(system_width);
+            output_doc_limits_int_int::<$ty, usize>(system_width);
+            output_doc_limits_int_int::<$ty, i8>(system_width);
+            output_doc_limits_int_int::<$ty, i16>(system_width);
+            output_doc_limits_int_int::<$ty, i32>(system_width);
+            output_doc_limits_int_int::<$ty, i64>(system_width);
+            output_doc_limits_int_int::<$ty, i128>(system_width);
+            output_doc_limits_int_int::<$ty, isize>(system_width);
+            output_doc_limits_int_float::<$ty, f32>(system_width);
+            output_doc_limits_int_float::<$ty, f64>(system_width);
             println!("impl Clamp for {} {{", stringify!($ty));
-            output_clamp_to_int_int::<$ty, u8>();
-            output_clamp_to_int_int::<$ty, u16>();
-            output_clamp_to_int_int::<$ty, u32>();
-            output_clamp_to_int_int::<$ty, u64>();
-            output_clamp_to_int_int::<$ty, u128>();
-            output_clamp_to_int_int::<$ty, usize>();
-            output_clamp_to_int_int::<$ty, i8>();
-            output_clamp_to_int_int::<$ty, i16>();
-            output_clamp_to_int_int::<$ty, i32>();
-            output_clamp_to_int_int::<$ty, i64>();
-            output_clamp_to_int_int::<$ty, i128>();
-            output_clamp_to_int_int::<$ty, isize>();
-            output_clamp_to_int_float::<$ty, f32>();
-            output_clamp_to_int_float::<$ty, f64>();
+            output_clamp_to_int_int::<$ty, u8>(system_width);
+            output_clamp_to_int_int::<$ty, u16>(system_width);
+            output_clamp_to_int_int::<$ty, u32>(system_width);
+            output_clamp_to_int_int::<$ty, u64>(system_width);
+            output_clamp_to_int_int::<$ty, u128>(system_width);
+            output_clamp_to_int_int::<$ty, usize>(system_width);
+            output_clamp_to_int_int::<$ty, i8>(system_width);
+            output_clamp_to_int_int::<$ty, i16>(system_width);
+            output_clamp_to_int_int::<$ty, i32>(system_width);
+            output_clamp_to_int_int::<$ty, i64>(system_width);
+            output_clamp_to_int_int::<$ty, i128>(system_width);
+            output_clamp_to_int_int::<$ty, isize>(system_width);
+            output_clamp_to_int_float::<$ty, f32>(system_width);
+            output_clamp_to_int_float::<$ty, f64>(system_width);
             println!("}}");
         };
     }
@@ -454,4 +441,65 @@ fn main() {
 
     // output_clamp_to_float_float("f32", "f64", false);
     // output_clamp_to_float_float("f64", "f32", true);
+}
+
+#[test]
+fn check_min_max() {
+    macro_rules! check {
+        ($a:ty, $b:ty) => {{
+            let (min, max) = min_max_int_int::<$a, $b>(<$a>::BITS, <$b>::BITS);
+
+            let min_check = (<$a>::MIN as i128).max((<$b>::MIN as i128)) as <$a as Integer>::Holder;
+            let max_check = (<$a>::MAX as i128).min((<$b>::MAX as i128)) as <$a as Integer>::Holder;
+
+            println!(
+                "From {} to {}.  Calculated {}..={}   Expected {}..={}",
+                stringify!($a),
+                stringify!($b),
+                min,
+                max,
+                min_check,
+                max_check
+            );
+
+            assert_eq!(
+                min,
+                min_check,
+                "MIN FAILED {} => {}",
+                stringify!($a),
+                stringify!($b)
+            );
+            assert_eq!(
+                max,
+                max_check,
+                "MAX FAILED {} => {}",
+                stringify!($a),
+                stringify!($b)
+            );
+        }};
+
+        ($a:ty) => {{
+            check!($a, u8);
+            check!($a, u16);
+            check!($a, u32);
+            check!($a, u64);
+            check!($a, usize);
+            check!($a, i8);
+            check!($a, i16);
+            check!($a, i32);
+            check!($a, i64);
+            check!($a, isize);
+        }};
+    }
+
+    check!(u8);
+    check!(u16);
+    check!(u32);
+    check!(u64);
+    check!(usize);
+    check!(i8);
+    check!(i16);
+    check!(i32);
+    check!(i64);
+    check!(isize);
 }
