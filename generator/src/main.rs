@@ -425,115 +425,259 @@ fn bits(system_width: u32, fbits: &[u32], tbits: &[u32]) -> (u32, u32) {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let system_width: u32 = args.last().unwrap().parse().unwrap();
-    assert!([16, 32, 64].contains(&system_width));
+    let last_arg = args.last().unwrap();
+    if last_arg == "README.md" {
+        macro_rules! output_limits {
+            (INT_INT $from:ty, $to:ty) => {{
+                let (min, max) = min_max_int_int::<$from, $to>(<$from>::BITS, <$to>::BITS);
+                if min == <$from>::MIN && max == <$from>::MAX {
+                    print!(" |");
+                } else {
+                    print!(" {}..={} |", min, max);
+                }
+            }};
+            (INT_FLOAT $from:ty, $to:ty) => {{
+                let (min, max) = min_max_int_float::<$from, $to>(<$from>::BITS, <$to>::MANTISSA_DIGITS);
+                if min == <$from>::MIN && max == <$from>::MAX {
+                    print!(" |");
+                } else {
+                    print!(" {}..={} |", min, max);
+                }
+            }};
 
-    println!("#![allow(clippy::cast_possible_truncation)]");
-    println!("#![allow(clippy::cast_lossless)]");
-    println!("#![allow(clippy::cast_sign_loss)]");
-    println!("#![allow(clippy::cast_possible_wrap)]");
-    println!("#![allow(clippy::cast_precision_loss)]");
-    println!("#![allow(dead_code)]");
-    println!("#![allow(unused_comparisons)]");
-    println!();
-    println!("use super::{{ClampError, Clamp}};");
+            (INT $table:expr, $from:ty) =>{{
+                print!("| {} |", stringify!($from));
+                if $table == 1 {
+                    output_limits!(INT_INT $from, u8);
+                    output_limits!(INT_INT $from, u16);
+                    output_limits!(INT_INT $from, u32);
+                    output_limits!(INT_INT $from, u64);
+                } else if $table == 2 {
+                    output_limits!(INT_INT $from, i8);
+                    output_limits!(INT_INT $from, i16);
+                    output_limits!(INT_INT $from, i32);
+                    output_limits!(INT_INT $from, i64);
+                } else if $table == 3 {
+                    output_limits!(INT_FLOAT $from, f32);
+                    output_limits!(INT_FLOAT $from, f64);
+                }
+                println!();
+            }};
 
-    macro_rules! output_all {
-        (INT $ty:ty) => {
+            (FLOAT_INT $from:ty, $to:ty) => {{
+                let (min,max) = min_max_int_float::<$to, $from>(<$from>::MANTISSA_DIGITS, <$to>::BITS);
+                print!(" {}..={} |", min, max);
+            }};
+            (FLOAT_FLOAT $from:ty, $to:ty) => {{
+                if <$from>::MANTISSA_DIGITS <= <$to>::MANTISSA_DIGITS {
+                    print!(" |");
+                } else {
+                    print!(" {:?}..={:?} |", <$to>::MIN, <$to>::MAX);
+                };
+            }};
+
+            (FLOAT $table:expr, $from:ty) =>{{
+                print!("| {} |", stringify!($from));
+                if $table == 1 {
+                    output_limits!(FLOAT_INT $from, u8);
+                    output_limits!(FLOAT_INT $from, u16);
+                    output_limits!(FLOAT_INT $from, u32);
+                    output_limits!(FLOAT_INT $from, u64);
+                } else if $table == 2 {
+                    output_limits!(FLOAT_INT $from, i8);
+                    output_limits!(FLOAT_INT $from, i16);
+                    output_limits!(FLOAT_INT $from, i32);
+                    output_limits!(FLOAT_INT $from, i64);
+                } else if $table == 3 {
+                    output_limits!(FLOAT_FLOAT $from, f32);
+                    output_limits!(FLOAT_FLOAT $from, f64);
+                }
+                println!();
+            }};
+        }
+
+        println!("ClampTo provides clamping rust primative number types and casting to another primative number type.");
+        println!();
+        println!("The clamp_to functions clamp the values and return it as the receiver type.");
+        println!();
+        println!("The try_clamp_to functions will return an `Ok` with the value cast as the receiver type if it fit within the receiver type, or an `Err` if it does not.");
+        println!();
+        println!("The checked_clamp_to functions will return an value cast as the receiver type if it fit within the receiver type, or panic if it does not.");
+        println!();
+        println!("# Using the [ClampTo] trait");
+        println!();
+        println!("The ClampTo trait is a convience trait that will return an inferred type based on the usage of the trait.");
+        println!();
+        println!("```");
+        println!("use clamp_to::ClampTo;");
+        println!();
+        println!("let a: u32 = 4242;");
+        println!("let clamped_u8: u8 = a.clamp_to();                     // 255u8");
+        println!("let clamped_u16: u16 = a.clamp_to();                   // 4242u16");
+        println!("let try_clamped_u8: u8 = a.try_clamped_to();           // Err(ClampError)");
+        println!("let try_clamped_u16: u16 = a.try_clamped_to();         // Ok(4242u16)");
+        println!("let checked_clamped_u8: u8 = a.checked_clamped_to();   // Panic");
+        println!("let checked_clamped_u16: u16 = a.checked_clamped_to(); // 4242u16");
+        println!("```");
+        println!();
+        println!("# Using the [Clamp] trait");
+        println!();
+        println!("Sometimes it's difficult to get an inferred type, and the generics to make [ClampTo] get messy.  ");
+        println!("[Clamp] gives direct access to each of the receiver types (ie, clamp_to_u8, clamp_to_f32, etc)");
+        println!("and is the trait [ClampTo] uses to do it's clamping.");
+        println!();
+        println!("```");
+        println!("use clamp_to::Clamp;");
+        println!();
+        println!("let a: u32 = 4242;");
+        println!("let clamped_u8 = a.clamp_to_u8();                     // 255u8");
+        println!("let clamped_u16 = a.clamp_to_u16();                   // 4242u16");
+        println!("let try_clamped_u8 = a.try_clamped_to_u8();           // Err(ClampError)");
+        println!("let try_clamped_u16 = a.try_clamped_to_u16();         // Ok(4242u16)");
+        println!("let checked_clamped_u8 = a.checked_clamped_to_u8();   // Panic");
+        println!("let checked_clamped_u16 = a.checked_clamped_to_u16(); // 4242u16");
+        println!("```");
+        println!();
+        println!("The tables below describe the clamping limits from one type to another. All clamping is designed to");
+        println!("be the intersection of the ranges of the two types. For example, clamping an i8 (-128..=127) to a u8 (0..=255)");
+        println!("will clamp the i8 to 0..=127. This ensures any negative values will not be interpreted as a large unsigned value.");
+        println!();
+        println!("Blank values in the tables means the values represented by the type can be entirely contained within the new type.");
+        println!();
+        println!("[usize] and [isize] follow the corresponding types for the system. [u64]/[i64] for a 64 bit system, etc.");
+        println!();
+
+        for table in 1..=3 {
+            if table == 1 {
+                println!("| | clamp_to_u8() | clamp_to_u16() | clamp_to_u32() | clamp_to_u64() |");
+                println!("| --- | --- | --- | --- | --- |");
+            } else if table == 2 {
+                println!("| | clamp_to_i8() | clamp_to_i16() | clamp_to_i32() | clamp_to_i64() |");
+                println!("| --- | --- | --- | --- | --- |");
+            } else if table == 3 {
+                println!("| | clamp_to_f32() | clamp_to_f64() |");
+                println!("| --- | --- | --- |");
+            }
+            output_limits!(INT table, u8);
+            output_limits!(INT table, u16);
+            output_limits!(INT table, u32);
+            output_limits!(INT table, u64);
+            output_limits!(INT table, i8);
+            output_limits!(INT table, i16);
+            output_limits!(INT table, i32);
+            output_limits!(INT table, i64);
+            output_limits!(FLOAT table, f32);
+            output_limits!(FLOAT table, f64);
             println!();
-            println!("/// Clamp {} to primitive number types", stringify!($ty));
-            println!("///");
-            println!("/// | To | Min | Max |");
-            println!("/// | --- | --- | --- |");
-            output_doc_limits_int_int::<$ty, u8>(system_width);
-            output_doc_limits_int_int::<$ty, u16>(system_width);
-            output_doc_limits_int_int::<$ty, u32>(system_width);
-            output_doc_limits_int_int::<$ty, u64>(system_width);
-            output_doc_limits_int_int::<$ty, u128>(system_width);
-            output_doc_limits_int_int::<$ty, usize>(system_width);
-            output_doc_limits_int_int::<$ty, i8>(system_width);
-            output_doc_limits_int_int::<$ty, i16>(system_width);
-            output_doc_limits_int_int::<$ty, i32>(system_width);
-            output_doc_limits_int_int::<$ty, i64>(system_width);
-            output_doc_limits_int_int::<$ty, i128>(system_width);
-            output_doc_limits_int_int::<$ty, isize>(system_width);
-            output_doc_limits_int_float::<$ty, f32>(system_width);
-            output_doc_limits_int_float::<$ty, f64>(system_width);
-            println!("impl Clamp for {} {{", stringify!($ty));
-            output_clamp_to_int_int::<$ty, u8>(system_width);
-            output_clamp_to_int_int::<$ty, u16>(system_width);
-            output_clamp_to_int_int::<$ty, u32>(system_width);
-            output_clamp_to_int_int::<$ty, u64>(system_width);
-            output_clamp_to_int_int::<$ty, u128>(system_width);
-            output_clamp_to_int_int::<$ty, usize>(system_width);
-            output_clamp_to_int_int::<$ty, i8>(system_width);
-            output_clamp_to_int_int::<$ty, i16>(system_width);
-            output_clamp_to_int_int::<$ty, i32>(system_width);
-            output_clamp_to_int_int::<$ty, i64>(system_width);
-            output_clamp_to_int_int::<$ty, i128>(system_width);
-            output_clamp_to_int_int::<$ty, isize>(system_width);
-            output_clamp_to_int_float::<$ty, f32>(system_width);
-            output_clamp_to_int_float::<$ty, f64>(system_width);
-            println!("}}");
-        };
+        }
+    } else {
+        let system_width: u32 = last_arg.parse().unwrap();
+        assert!([16, 32, 64].contains(&system_width));
 
-        (FLOAT $ty:ty) => {
-            println!();
-            println!("/// Clamp {} to primitive number types", stringify!($ty));
-            println!("///");
-            println!("/// | To | Min | Max |");
-            println!("/// | --- | --- | --- |");
-            output_doc_limits_float_int::<$ty, u8>(system_width);
-            output_doc_limits_float_int::<$ty, u16>(system_width);
-            output_doc_limits_float_int::<$ty, u32>(system_width);
-            output_doc_limits_float_int::<$ty, u64>(system_width);
-            output_doc_limits_float_int::<$ty, u128>(system_width);
-            output_doc_limits_float_int::<$ty, usize>(system_width);
-            output_doc_limits_float_int::<$ty, i8>(system_width);
-            output_doc_limits_float_int::<$ty, i16>(system_width);
-            output_doc_limits_float_int::<$ty, i32>(system_width);
-            output_doc_limits_float_int::<$ty, i64>(system_width);
-            output_doc_limits_float_int::<$ty, i128>(system_width);
-            output_doc_limits_float_int::<$ty, isize>(system_width);
-            output_doc_limits_float_float::<$ty, f32>();
-            output_doc_limits_float_float::<$ty, f64>();
-            println!("impl Clamp for {} {{", stringify!($ty));
-            output_clamp_to_float_int::<$ty, u8>(system_width);
-            output_clamp_to_float_int::<$ty, u16>(system_width);
-            output_clamp_to_float_int::<$ty, u32>(system_width);
-            output_clamp_to_float_int::<$ty, u64>(system_width);
-            output_clamp_to_float_int::<$ty, u128>(system_width);
-            output_clamp_to_float_int::<$ty, usize>(system_width);
-            output_clamp_to_float_int::<$ty, i8>(system_width);
-            output_clamp_to_float_int::<$ty, i16>(system_width);
-            output_clamp_to_float_int::<$ty, i32>(system_width);
-            output_clamp_to_float_int::<$ty, i64>(system_width);
-            output_clamp_to_float_int::<$ty, i128>(system_width);
-            output_clamp_to_float_int::<$ty, isize>(system_width);
-            output_clamp_to_float_float::<$ty, f32>();
-            output_clamp_to_float_float::<$ty, f64>();
-            println!("}}");
-        };
+        println!("#![allow(clippy::cast_possible_truncation)]");
+        println!("#![allow(clippy::cast_lossless)]");
+        println!("#![allow(clippy::cast_sign_loss)]");
+        println!("#![allow(clippy::cast_possible_wrap)]");
+        println!("#![allow(clippy::cast_precision_loss)]");
+        println!("#![allow(dead_code)]");
+        println!("#![allow(unused_comparisons)]");
+        println!();
+        println!("use super::{{ClampError, Clamp}};");
+
+        macro_rules! output_all {
+            (INT $ty:ty) => {
+                println!();
+                println!("/// Clamp {} to primitive number types", stringify!($ty));
+                println!("///");
+                println!("/// | To | Min | Max |");
+                println!("/// | --- | --- | --- |");
+                output_doc_limits_int_int::<$ty, u8>(system_width);
+                output_doc_limits_int_int::<$ty, u16>(system_width);
+                output_doc_limits_int_int::<$ty, u32>(system_width);
+                output_doc_limits_int_int::<$ty, u64>(system_width);
+                output_doc_limits_int_int::<$ty, u128>(system_width);
+                output_doc_limits_int_int::<$ty, usize>(system_width);
+                output_doc_limits_int_int::<$ty, i8>(system_width);
+                output_doc_limits_int_int::<$ty, i16>(system_width);
+                output_doc_limits_int_int::<$ty, i32>(system_width);
+                output_doc_limits_int_int::<$ty, i64>(system_width);
+                output_doc_limits_int_int::<$ty, i128>(system_width);
+                output_doc_limits_int_int::<$ty, isize>(system_width);
+                output_doc_limits_int_float::<$ty, f32>(system_width);
+                output_doc_limits_int_float::<$ty, f64>(system_width);
+                println!("impl Clamp for {} {{", stringify!($ty));
+                output_clamp_to_int_int::<$ty, u8>(system_width);
+                output_clamp_to_int_int::<$ty, u16>(system_width);
+                output_clamp_to_int_int::<$ty, u32>(system_width);
+                output_clamp_to_int_int::<$ty, u64>(system_width);
+                output_clamp_to_int_int::<$ty, u128>(system_width);
+                output_clamp_to_int_int::<$ty, usize>(system_width);
+                output_clamp_to_int_int::<$ty, i8>(system_width);
+                output_clamp_to_int_int::<$ty, i16>(system_width);
+                output_clamp_to_int_int::<$ty, i32>(system_width);
+                output_clamp_to_int_int::<$ty, i64>(system_width);
+                output_clamp_to_int_int::<$ty, i128>(system_width);
+                output_clamp_to_int_int::<$ty, isize>(system_width);
+                output_clamp_to_int_float::<$ty, f32>(system_width);
+                output_clamp_to_int_float::<$ty, f64>(system_width);
+                println!("}}");
+            };
+
+            (FLOAT $ty:ty) => {
+                println!();
+                println!("/// Clamp {} to primitive number types", stringify!($ty));
+                println!("///");
+                println!("/// | To | Min | Max |");
+                println!("/// | --- | --- | --- |");
+                output_doc_limits_float_int::<$ty, u8>(system_width);
+                output_doc_limits_float_int::<$ty, u16>(system_width);
+                output_doc_limits_float_int::<$ty, u32>(system_width);
+                output_doc_limits_float_int::<$ty, u64>(system_width);
+                output_doc_limits_float_int::<$ty, u128>(system_width);
+                output_doc_limits_float_int::<$ty, usize>(system_width);
+                output_doc_limits_float_int::<$ty, i8>(system_width);
+                output_doc_limits_float_int::<$ty, i16>(system_width);
+                output_doc_limits_float_int::<$ty, i32>(system_width);
+                output_doc_limits_float_int::<$ty, i64>(system_width);
+                output_doc_limits_float_int::<$ty, i128>(system_width);
+                output_doc_limits_float_int::<$ty, isize>(system_width);
+                output_doc_limits_float_float::<$ty, f32>();
+                output_doc_limits_float_float::<$ty, f64>();
+                println!("impl Clamp for {} {{", stringify!($ty));
+                output_clamp_to_float_int::<$ty, u8>(system_width);
+                output_clamp_to_float_int::<$ty, u16>(system_width);
+                output_clamp_to_float_int::<$ty, u32>(system_width);
+                output_clamp_to_float_int::<$ty, u64>(system_width);
+                output_clamp_to_float_int::<$ty, u128>(system_width);
+                output_clamp_to_float_int::<$ty, usize>(system_width);
+                output_clamp_to_float_int::<$ty, i8>(system_width);
+                output_clamp_to_float_int::<$ty, i16>(system_width);
+                output_clamp_to_float_int::<$ty, i32>(system_width);
+                output_clamp_to_float_int::<$ty, i64>(system_width);
+                output_clamp_to_float_int::<$ty, i128>(system_width);
+                output_clamp_to_float_int::<$ty, isize>(system_width);
+                output_clamp_to_float_float::<$ty, f32>();
+                output_clamp_to_float_float::<$ty, f64>();
+                println!("}}");
+            };
+        }
+
+        output_all!(INT u8);
+        output_all!(INT u16);
+        output_all!(INT u32);
+        output_all!(INT u64);
+        output_all!(INT u128);
+        output_all!(INT usize);
+        output_all!(INT i8);
+        output_all!(INT i16);
+        output_all!(INT i32);
+        output_all!(INT i64);
+        output_all!(INT i128);
+        output_all!(INT isize);
+
+        output_all!(FLOAT f32);
+        output_all!(FLOAT f64);
     }
-
-    output_all!(INT u8);
-    output_all!(INT u16);
-    output_all!(INT u32);
-    output_all!(INT u64);
-    output_all!(INT u128);
-    output_all!(INT usize);
-    output_all!(INT i8);
-    output_all!(INT i16);
-    output_all!(INT i32);
-    output_all!(INT i64);
-    output_all!(INT i128);
-    output_all!(INT isize);
-
-    output_all!(FLOAT f32);
-    output_all!(FLOAT f64);
-
-    // output_clamp_to_float_float("f32", "f64", false);
-    // output_clamp_to_float_float("f64", "f32", true);
 }
 
 #[test]
