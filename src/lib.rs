@@ -12,6 +12,11 @@ mod clamp_64;
 pub struct ClampError(String);
 
 impl ClampError {
+    /// Check to see if `v` is within the range of `min`..=`max`.
+    ///
+    /// # Error
+    ///
+    /// Returns `Err` if the `v` is outside the range.
     fn check<T>(v: &T, min: T, max: T) -> Result<(), Self>
     where
         T: PartialOrd + core::fmt::Debug,

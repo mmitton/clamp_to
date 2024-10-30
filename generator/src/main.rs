@@ -524,7 +524,7 @@ fn main() {
         println!();
         println!("Sometimes it's difficult to get an inferred type, and the generics to make [ClampTo] get messy.  ");
         println!("[Clamp] gives direct access to each of the receiver types (ie, clamp_to_u8, clamp_to_f32, etc)");
-        println!("and is the trait [ClampTo] uses to do it's clamping.");
+        println!("and is the trait [ClampTo] uses to do its clamping.");
         println!();
         println!("```");
         println!("use clamp_to::Clamp;");
